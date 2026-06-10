@@ -3,7 +3,7 @@ import {
   Plus, CalendarDays, Users, LayoutGrid, Mail, Check, Trash2, Pencil,
   Download, Upload, X, ChevronLeft, ChevronRight, Search, Sparkles,
   CheckCircle2, Circle, Clock, FolderOpen, AlertCircle, LogOut, Send, ShieldCheck,
-  LayoutDashboard, GanttChartSquare, ChevronDown, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table
+  LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER } from "./trackerData.js";
@@ -2295,7 +2295,7 @@ function loadCalNotes() { try { const v = localStorage.getItem(CALKEY); if (v) r
 function saveCalNotes(n) { try { localStorage.setItem(CALKEY, JSON.stringify(n)); } catch (e) {} }
 /* ---------------- Tracker (Excel-style sheet) ---------------- */
 const TRACKER_KEY = "cadence:tracker:v1";
-function loadTracker() { try { const v = localStorage.getItem(TRACKER_KEY); if (v) return JSON.parse(v); } catch (e) {} return null; }
+function loadTracker() { try { const v = localStorage.getItem(TRACKER_KEY); if (v) { const p = JSON.parse(v); return Array.isArray(p) ? { rows: p } : p; } } catch (e) {} return null; }
 function saveTracker(d) { try { localStorage.setItem(TRACKER_KEY, JSON.stringify(d)); } catch (e) {} }
 const TRACKER_BLOCK = new Set(["SEATTLE", "DALLAS", "IOWA", "OTHERS", "COM-1"]);
 const trackerEmailFor = (name) => {
@@ -2334,8 +2334,13 @@ const TRACKER_COLS = [
   { key: "stage", label: "Stage", w: 170 },
 ];
 function TrackerView({ ctx }) {
-  const [data, setData] = useState(() => loadTracker() || SEED_TRACKER);
-  useEffect(() => { saveTracker(data); }, [data]);
+  const [data, setData] = useState(() => {
+    const s = loadTracker();
+    const rs = (s && s.rows) || SEED_TRACKER;
+    return rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
+  });
+  const [cols, setCols] = useState(() => { const s = loadTracker(); return (s && s.cols) || TRACKER_COLS; });
+  useEffect(() => { saveTracker({ cols, rows: data }); }, [cols, data]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [person, setPerson] = useState("all");
@@ -2350,7 +2355,18 @@ function TrackerView({ ctx }) {
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
   });
-  const update = (rowNumber, key, value) => setData(ds => ds.map(r => r.rowNumber === rowNumber ? { ...r, [key]: value } : r));
+  const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
+  const addRow = () => setData(ds => { const mx = ds.reduce((m, r) => Math.max(m, Number(r.rowNumber) || 0), 0); return [...ds, { _id: "r" + uid(), rowNumber: String(mx + 1) }]; });
+  const delRow = (id) => setData(ds => ds.filter(r => r._id !== id));
+  const moveRow = (id, dir) => setData(ds => {
+    const vis = ds.filter(r => rows.some(x => x._id === r._id));
+    const vi = vis.findIndex(r => r._id === id); const tgt = vis[vi + dir]; if (!tgt) return ds;
+    const a = ds.findIndex(r => r._id === id), b = ds.findIndex(r => r._id === tgt._id);
+    const c = [...ds]; [c[a], c[b]] = [c[b], c[a]]; return c;
+  });
+  const addCol = () => { const label = window.prompt("New column name:"); if (!label || !label.trim()) return; setCols(cs => [...cs, { key: "c_" + uid(), label: label.trim(), w: 150 }]); };
+  const delCol = (key) => { if (!window.confirm("Delete this column?")) return; setCols(cs => cs.filter(c => c.key !== key)); };
+  const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const emailTeam = (row) => {
     const em = rowEmails(row);
     if (!em.length) return;
@@ -2361,6 +2377,8 @@ function TrackerView({ ctx }) {
   };
   const cell = { border: "1px solid #d0d7de", padding: "5px 8px", fontSize: 12.5, color: "#1b2330", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#fff" };
   const headc = { ...cell, background: "#eef2f7", fontWeight: 700, color: "#16243a", position: "sticky", top: 0, zIndex: 3 };
+  const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "#5a6b85", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
+  const actBtn = { border: "none", background: "transparent", cursor: "pointer", color: "#5a6b85", display: "inline-grid", placeItems: "center", padding: 2 };
   return (
     <>
       <div className="head">
@@ -2380,6 +2398,9 @@ function TrackerView({ ctx }) {
             {people.map(s => <option key={s} value={s}>{s === "all" ? "All people" : s}</option>)}
           </select>
           <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {data.length} projects</span>
+          <div style={{ flex: 1 }} />
+          <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
+          <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
         </div>
         <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:5px 8px;outline:none;}
 .trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}`}</style>
@@ -2387,37 +2408,53 @@ function TrackerView({ ctx }) {
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
             <thead>
               <tr>
-                {TRACKER_COLS.map(c => (
-                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: 0, zIndex: 5 } : {}) }}>{c.label}</th>
+                {cols.map((c, ci) => (
+                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: 0, zIndex: 5 } : {}) }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
+                      <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
+                      <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === cols.length - 1} style={colBtn}>›</button>
+                      <button title="Delete column" onClick={() => delCol(c.key)} style={{ ...colBtn, color: "#c0392b" }}>×</button>
+                    </div>
+                  </th>
                 ))}
                 <th style={{ ...headc, width: 64, minWidth: 64 }}>Email</th>
+                <th style={{ ...headc, width: 96, minWidth: 96 }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, ri) => (
-                <tr key={r.rowNumber || ri}>
-                  {TRACKER_COLS.map(c => (
+              {rows.map((r, ri) => {
+                const em = rowEmails(r);
+                return (
+                <tr key={r._id || ri}>
+                  {cols.map(c => (
                     <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: c.key === "rowNumber" ? "5px 8px" : "0", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: 0, zIndex: 2 } : {}) }}>
                       {c.key === "rowNumber" ? r[c.key] : (
-                        <input key={r.rowNumber + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
-                          onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r.rowNumber, c.key, e.target.value); }} />
+                        <input key={r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
+                          onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
                     </td>
                   ))}
                   <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64 }}>
-                    <button title={r.emails && r.emails.length ? `Email team (${r.emails.length})` : "No team emails"} disabled={!r.emails || !r.emails.length}
+                    <button title={em.length ? `Email team (${em.length})` : "No team emails"} disabled={!em.length}
                       onClick={() => emailTeam(r)}
-                      style={{ border: "none", background: "transparent", cursor: r.emails && r.emails.length ? "pointer" : "not-allowed", color: r.emails && r.emails.length ? "#2563c9" : "#c2c8d0", display: "grid", placeItems: "center", width: "100%" }}>
+                      style={{ border: "none", background: "transparent", cursor: em.length ? "pointer" : "not-allowed", color: em.length ? "#2563c9" : "#c2c8d0", display: "grid", placeItems: "center", width: "100%" }}>
                       <Mail size={15} />
                     </button>
                   </td>
+                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px" }}>
+                    <button title="Move up" onClick={() => moveRow(r._id, -1)} style={actBtn}><ChevronUp size={15} /></button>
+                    <button title="Move down" onClick={() => moveRow(r._id, 1)} style={actBtn}><ChevronDown size={15} /></button>
+                    <button title="Delete row" onClick={() => { if (window.confirm("Delete this row?")) delRow(r._id); }} style={{ ...actBtn, color: "#c0392b" }}><Trash2 size={14} /></button>
+                  </td>
                 </tr>
-              ))}
-              {rows.length === 0 && <tr><td colSpan={TRACKER_COLS.length + 1} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+                );
+              })}
+              {rows.length === 0 && <tr><td colSpan={cols.length + 2} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click any cell to edit — changes save automatically. The mail icon emails that project's whole team (opens Outlook).</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click a cell to edit · "Row"/"Column" buttons add · header ‹ › and row arrows reorder · × / trash delete · changes save automatically · mail icon emails the team.</div>
       </div>
     </>
   );
