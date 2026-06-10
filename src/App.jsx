@@ -3,9 +3,10 @@ import {
   Plus, CalendarDays, Users, LayoutGrid, Mail, Check, Trash2, Pencil,
   Download, Upload, X, ChevronLeft, ChevronRight, Search, Sparkles,
   CheckCircle2, Circle, Clock, FolderOpen, AlertCircle, LogOut, Send, ShieldCheck,
-  LayoutDashboard, GanttChartSquare, ChevronDown, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare
+  LayoutDashboard, GanttChartSquare, ChevronDown, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
+import { SEED_TRACKER } from "./trackerData.js";
 
 /* ================================================================ *
  *  Cadence — dark team dashboard
@@ -297,6 +298,7 @@ const COLUMNS = [
 const PRIO = { low: "#7686A0", med: "#E8A53C", high: "#FF6B45" };
 const NAV = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
+  { id: "tracker", label: "Tracker", Icon: Table },
   { id: "gantt", label: "Gantt", Icon: GanttChartSquare },
   { id: "alerts", label: "Inbox", Icon: Bell },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
@@ -515,6 +517,7 @@ export default function App() {
 
       <div className="main">
         {view === "home" && <HomeView ctx={ctx} />}
+        {view === "tracker" && <TrackerView ctx={ctx} />}
         {view === "gantt" && <GanttView ctx={ctx} />}
         {view === "alerts" && <NotificationsView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
@@ -2290,6 +2293,99 @@ function TaskCard({ t, i, person, project, onTick, onEdit, onDel, onEmail }) {
 const CALKEY = "cadence:caldnotes:v1";
 function loadCalNotes() { try { const v = localStorage.getItem(CALKEY); if (v) return JSON.parse(v); } catch (e) {} return {}; }
 function saveCalNotes(n) { try { localStorage.setItem(CALKEY, JSON.stringify(n)); } catch (e) {} }
+/* ---------------- Tracker (Excel-style sheet) ---------------- */
+const TRACKER_COLS = [
+  { key: "projectName", label: "Project Name", w: 250, sticky: true },
+  { key: "rowNumber", label: "Row #", w: 60 },
+  { key: "internalLocation", label: "Internal Location", w: 130 },
+  { key: "mepCentralHost", label: "MEP Central Host", w: 150 },
+  { key: "vantagepoint", label: "Vantagepoint #", w: 130 },
+  { key: "client", label: "Client", w: 190 },
+  { key: "pm", label: "PM", w: 150 },
+  { key: "ml", label: "ML", w: 150 },
+  { key: "me", label: "ME", w: 170 },
+  { key: "pe", label: "PE", w: 170 },
+  { key: "ee", label: "EE", w: 170 },
+  { key: "fp", label: "FP", w: 150 },
+  { key: "statusNotes", label: "Status Notes", w: 200 },
+  { key: "dueDates", label: "Due Dates", w: 100 },
+  { key: "bidPermitDate", label: "Bid/Permit Date", w: 120 },
+  { key: "bidPermitNote", label: "Bid/Permit Note", w: 150 },
+  { key: "qaqc", label: "QAQC", w: 90 },
+  { key: "stamp", label: "Stamp", w: 110 },
+  { key: "stage", label: "Stage", w: 170 },
+];
+function TrackerView({ ctx }) {
+  const [q, setQ] = useState("");
+  const [stage, setStage] = useState("all");
+  const stages = ["all", ...Array.from(new Set(SEED_TRACKER.map(r => r.stage).filter(Boolean)))];
+  const ql = q.trim().toLowerCase();
+  const rows = SEED_TRACKER.filter(r => {
+    if (stage !== "all" && r.stage !== stage) return false;
+    if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
+    return true;
+  });
+  const emailTeam = (row) => {
+    if (!row.emails || !row.emails.length) return;
+    const u = new URLSearchParams();
+    u.set("to", row.emails.join(","));
+    u.set("subject", `[${row.projectName}] `);
+    window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
+  };
+  const cell = { border: "1px solid #d0d7de", padding: "5px 8px", fontSize: 12.5, color: "#1b2330", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#fff" };
+  const headc = { ...cell, background: "#eef2f7", fontWeight: 700, color: "#16243a", position: "sticky", top: 0, zIndex: 3 };
+  return (
+    <>
+      <div className="head">
+        <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
+      </div>
+      <div className="panel" style={{ padding: 12 }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
+            <Search size={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search project, client, person, VP#…"
+              style={{ width: "100%", padding: "9px 12px 9px 34px", borderRadius: 10, border: "1px solid var(--line2)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 14, outline: "none" }} />
+          </div>
+          <select className="btn" value={stage} onChange={e => setStage(e.target.value)}>
+            {stages.map(s => <option key={s} value={s}>{s === "all" ? "All stages" : s}</option>)}
+          </select>
+          <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {SEED_TRACKER.length} projects</span>
+        </div>
+        <div style={{ overflow: "auto", maxHeight: "72vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
+          <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
+            <thead>
+              <tr>
+                {TRACKER_COLS.map(c => (
+                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: 0, zIndex: 5 } : {}) }}>{c.label}</th>
+                ))}
+                <th style={{ ...headc, width: 64, minWidth: 64 }}>Email</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, ri) => (
+                <tr key={r.rowNumber || ri}>
+                  {TRACKER_COLS.map(c => (
+                    <td key={c.key} title={r[c.key]} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: 0, zIndex: 2 } : {}) }}>{r[c.key]}</td>
+                  ))}
+                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64 }}>
+                    <button title={r.emails && r.emails.length ? `Email team (${r.emails.length})` : "No team emails"} disabled={!r.emails || !r.emails.length}
+                      onClick={() => emailTeam(r)}
+                      style={{ border: "none", background: "transparent", cursor: r.emails && r.emails.length ? "pointer" : "not-allowed", color: r.emails && r.emails.length ? "#2563c9" : "#c2c8d0", display: "grid", placeItems: "center", width: "100%" }}>
+                      <Mail size={15} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && <tr><td colSpan={TRACKER_COLS.length + 1} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click the mail icon to email a project's whole team (opens Outlook).</div>
+      </div>
+    </>
+  );
+}
+
 function CalendarView({ ctx }) {
   const gd = ctx.gantt;
   const gotoGantt = ctx.gotoGantt;
