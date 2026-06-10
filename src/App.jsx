@@ -355,7 +355,7 @@ export default function App() {
   const ThemeIcon = theme === "auto" ? Monitor : theme === "light" ? Sun : Moon;
   const [profileOpen, setProfileOpen] = useState(false);
   const updateUser = (patch) => { setUser(u => { const n = { ...u, ...patch }; saveUser(n); return n; }); };
-  const [gantt, setGantt] = useState(() => loadGantt() || SEED_GANTT);
+  const [gantt, setGantt] = useState(() => loadGantt() || gSample());
   useEffect(() => { saveGantt(gantt); }, [gantt]);
   const [ganttGoto, setGanttGoto] = useState(null);
   const gotoGantt = (pid) => { if (pid) bumpOpen(pid); setGanttGoto(pid || null); setView("gantt"); };
@@ -737,7 +737,7 @@ function HomeView({ ctx }) {
 }
 
 /* ---------------- Gantt (project picker -> timeline -> sign-off) ---------------- */
-const GKEY = "cadence:gantt:v2";
+const GKEY = "cadence:gantt:v3";
 const OKEY = "cadence:opens:v1";
 function loadGantt() { try { const v = localStorage.getItem(GKEY); if (v) return JSON.parse(v); } catch (e) {} return null; }
 function saveGantt(g) { try { localStorage.setItem(GKEY, JSON.stringify(g)); } catch (e) {} }
@@ -2294,6 +2294,24 @@ const CALKEY = "cadence:caldnotes:v1";
 function loadCalNotes() { try { const v = localStorage.getItem(CALKEY); if (v) return JSON.parse(v); } catch (e) {} return {}; }
 function saveCalNotes(n) { try { localStorage.setItem(CALKEY, JSON.stringify(n)); } catch (e) {} }
 /* ---------------- Tracker (Excel-style sheet) ---------------- */
+const TRACKER_KEY = "cadence:tracker:v1";
+function loadTracker() { try { const v = localStorage.getItem(TRACKER_KEY); if (v) return JSON.parse(v); } catch (e) {} return null; }
+function saveTracker(d) { try { localStorage.setItem(TRACKER_KEY, JSON.stringify(d)); } catch (e) {} }
+const TRACKER_BLOCK = new Set(["SEATTLE", "DALLAS", "IOWA", "OTHERS", "COM-1"]);
+const trackerEmailFor = (name) => {
+  const parts = String(name || "").trim().split(/\s+/).map(p => p.replace(/[^A-Za-z]/g, "")).filter(Boolean);
+  if (!parts.length) return "";
+  if (parts.length >= 2) return `${parts[0].toLowerCase()}.${parts[parts.length - 1].toLowerCase()}@rtmec.com`;
+  return `${parts[0].toLowerCase()}@rtmec.com`;
+};
+const rowEmails = (r) => {
+  const out = [];
+  ["pm", "ml", "me", "pe", "ee", "fp"].forEach(k => String(r[k] || "").split(" and ").forEach(part => {
+    const nm = part.trim(); if (!nm || TRACKER_BLOCK.has(nm.toUpperCase())) return;
+    const e = trackerEmailFor(nm); if (e && !out.includes(e)) out.push(e);
+  }));
+  return out;
+};
 const TRACKER_COLS = [
   { key: "projectName", label: "Project Name", w: 250, sticky: true },
   { key: "rowNumber", label: "Row #", w: 60 },
@@ -2316,19 +2334,28 @@ const TRACKER_COLS = [
   { key: "stage", label: "Stage", w: 170 },
 ];
 function TrackerView({ ctx }) {
+  const [data, setData] = useState(() => loadTracker() || SEED_TRACKER);
+  useEffect(() => { saveTracker(data); }, [data]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
-  const stages = ["all", ...Array.from(new Set(SEED_TRACKER.map(r => r.stage).filter(Boolean)))];
+  const [person, setPerson] = useState("all");
+  const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp"];
+  const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(" and ").map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
+  const stages = ["all", ...Array.from(new Set(data.map(r => r.stage).filter(Boolean)))];
+  const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
-  const rows = SEED_TRACKER.filter(r => {
+  const rows = data.filter(r => {
     if (stage !== "all" && r.stage !== stage) return false;
+    if (person !== "all" && !namesIn(r).includes(person)) return false;
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
   });
+  const update = (rowNumber, key, value) => setData(ds => ds.map(r => r.rowNumber === rowNumber ? { ...r, [key]: value } : r));
   const emailTeam = (row) => {
-    if (!row.emails || !row.emails.length) return;
+    const em = rowEmails(row);
+    if (!em.length) return;
     const u = new URLSearchParams();
-    u.set("to", row.emails.join(","));
+    u.set("to", em.join(","));
     u.set("subject", `[${row.projectName}] `);
     window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
   };
@@ -2349,10 +2376,15 @@ function TrackerView({ ctx }) {
           <select className="btn" value={stage} onChange={e => setStage(e.target.value)}>
             {stages.map(s => <option key={s} value={s}>{s === "all" ? "All stages" : s}</option>)}
           </select>
-          <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {SEED_TRACKER.length} projects</span>
+          <select className="btn" value={person} onChange={e => setPerson(e.target.value)}>
+            {people.map(s => <option key={s} value={s}>{s === "all" ? "All people" : s}</option>)}
+          </select>
+          <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {data.length} projects</span>
         </div>
+        <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:5px 8px;outline:none;}
+.trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}`}</style>
         <div style={{ overflow: "auto", maxHeight: "72vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
-          <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
+          <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
             <thead>
               <tr>
                 {TRACKER_COLS.map(c => (
@@ -2365,7 +2397,12 @@ function TrackerView({ ctx }) {
               {rows.map((r, ri) => (
                 <tr key={r.rowNumber || ri}>
                   {TRACKER_COLS.map(c => (
-                    <td key={c.key} title={r[c.key]} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: 0, zIndex: 2 } : {}) }}>{r[c.key]}</td>
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: c.key === "rowNumber" ? "5px 8px" : "0", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: 0, zIndex: 2 } : {}) }}>
+                      {c.key === "rowNumber" ? r[c.key] : (
+                        <input key={r.rowNumber + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
+                          onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r.rowNumber, c.key, e.target.value); }} />
+                      )}
+                    </td>
                   ))}
                   <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64 }}>
                     <button title={r.emails && r.emails.length ? `Email team (${r.emails.length})` : "No team emails"} disabled={!r.emails || !r.emails.length}
@@ -2380,7 +2417,7 @@ function TrackerView({ ctx }) {
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click the mail icon to email a project's whole team (opens Outlook).</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click any cell to edit — changes save automatically. The mail icon emails that project's whole team (opens Outlook).</div>
       </div>
     </>
   );
