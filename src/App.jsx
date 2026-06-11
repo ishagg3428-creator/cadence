@@ -2309,7 +2309,7 @@ const rowEmails = (r) => {
   const out = [];
   ["pm", "ml", "me", "pe", "ee", "fp"].forEach(k => String(r[k] || "").split(/\n| and /).forEach(part => {
     const nm = part.trim(); if (!nm) return;
-    const e = EMAIL_DIR[nm.toLowerCase()]; if (e && !out.includes(e)) out.push(e);
+    const e = trackerEmailFor(nm); if (e && !out.includes(e)) out.push(e);
   }));
   return out;
 };
@@ -2323,7 +2323,7 @@ function RoleCell({ value, onSave }) {
   return (
     <div className="trk-role" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
       {names.length === 0 ? <span style={{ color: "#b9c1cd", paddingLeft: 8 }}>—</span> :
-        names.map((n, i) => { const e = EMAIL_DIR[n.toLowerCase()]; return <div key={i}>{e ? <a href={"mailto:" + e} onClick={ev => ev.stopPropagation()}>{n}</a> : <span>{n}</span>}</div>; })}
+        names.map((n, i) => { const e = trackerEmailFor(n); return <div key={i}>{e ? <a href={"mailto:" + e} onClick={ev => ev.stopPropagation()}>{n}</a> : <span>{n}</span>}</div>; })}
     </div>
   );
 }
@@ -2411,7 +2411,7 @@ function TrackerView({ ctx }) {
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp"];
-  const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(" and ").map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
+  const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
   const rows = data.filter(r => {
