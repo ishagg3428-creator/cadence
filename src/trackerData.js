@@ -1,4 +1,24 @@
-// Auto-generated full tracker rows (all Excel columns) for the Tracker tab.
+// Auto-generated tracker rows (normalized names, newline-separated, recognized emails).
+export const EMAIL_DIR = {
+"aaron burch": "aaron.burch@rtmec.com",
+"andrew gustafson": "andrew.gustafson@rtmec.com",
+"byshop williams": "byshop.williams@rtmec.com",
+"claire palmer": "claire.palmer@rtmec.com",
+"dan king": "dan.king@rtmec.com",
+"david piluski": "david.piluski@rtmec.com",
+"gabriel ferguson": "gabriel.ferguson@rtmec.com",
+"habiba watfa": "habiba.watfa@rtmec.com",
+"hope huenecke": "hope.huenecke@rtmec.com",
+"james barnickel": "james.barnickel@rtmec.com",
+"jessica sembdner": "jessica.sembdner@rtmec.com",
+"jimmy yakubov": "jimmy.yakubov@rtmec.com",
+"john wolfe": "john.wolfe@rtmec.com",
+"madison huschak": "madison.huschak@rtmec.com",
+"matthew deleo": "matthew.deleo@rtmec.com",
+"sophia crew": "sophia.crew@rtmec.com",
+"alex babusci": "alex.babusci@rtmec.com"
+};
+
 export const SEED_TRACKER = [
 {
 "rowNumber": "1",
@@ -130,7 +150,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "John Wolfe",
 "pe": "John Wolfe",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "",
 "statusNotes": "",
 "dueDates": "",
@@ -154,8 +174,8 @@ export const SEED_TRACKER = [
 "client": "ECKENHOFF",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
-"pe": "Alex Babusci and Matthew DeLeo",
+"me": "Alex Babusci\nHope Huenecke",
+"pe": "Alex Babusci\nMatthew DeLeo",
 "ee": "Andrew Gustafson",
 "fp": "",
 "statusNotes": "SD SET",
@@ -225,7 +245,7 @@ export const SEED_TRACKER = [
 "client": "PROFESSIONAL BUILDING SERVICES",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
+"me": "Alex Babusci\nHope Huenecke",
 "pe": "",
 "ee": "Ryan Swims",
 "fp": "James Barnickel",
@@ -239,7 +259,6 @@ export const SEED_TRACKER = [
 "emails": [
 "alex.babusci@rtmec.com",
 "hope.huenecke@rtmec.com",
-"ryan.swims@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -276,10 +295,10 @@ export const SEED_TRACKER = [
 "client": "ONNI GROUP",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Alex Babusci and Gabriel Ferguson",
+"me": "Alex Babusci\nGabriel Ferguson",
 "pe": "Gabriel Ferguson",
 "ee": "Byshop Williams",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "WAITING ON BACKGROUNDS\nIFT/IFP 10/24\nIFC 12/20",
 "dueDates": "IFP 10/24",
 "bidPermitDate": "",
@@ -305,10 +324,10 @@ export const SEED_TRACKER = [
 "client": "WARE MALCOMB",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Claire Palmer and Alex Babusci",
-"pe": "Claire Palmer and Alex Babusci",
-"ee": "Madison Huschak and Andrew Gustafson",
-"fp": "Jimmy Yakubov and James Barnickel",
+"me": "Claire Palmer\nAlex Babusci",
+"pe": "Claire Palmer\nAlex Babusci",
+"ee": "Madison Huschak\nAndrew Gustafson",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "WAITING ON PERMIT COMMENTS",
 "dueDates": "",
 "bidPermitDate": "",
@@ -334,8 +353,8 @@ export const SEED_TRACKER = [
 "client": "OKW ARCHITECTS",
 "pm": "John Wolfe",
 "ml": "John Wolfe",
-"me": "John Wolfe and Ryan Swims",
-"pe": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nRyan Swims",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "Byshop Williams",
 "fp": "James Barnickel",
 "statusNotes": "WAITING ON PERMIT COMMENTS",
@@ -347,7 +366,6 @@ export const SEED_TRACKER = [
 "stage": "DELAYS",
 "emails": [
 "john.wolfe@rtmec.com",
-"ryan.swims@rtmec.com",
 "claire.palmer@rtmec.com",
 "byshop.williams@rtmec.com",
 "james.barnickel@rtmec.com"
@@ -363,7 +381,7 @@ export const SEED_TRACKER = [
 "pm": "John Wolfe",
 "ml": "John Wolfe",
 "me": "John Wolfe",
-"pe": "Jeff Piluski",
+"pe": "David Piluski",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "SD NARRATIVE REVISIONS",
@@ -375,7 +393,7 @@ export const SEED_TRACKER = [
 "stage": "DELAYS",
 "emails": [
 "john.wolfe@rtmec.com",
-"jeff.piluski@rtmec.com",
+"david.piluski@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
@@ -534,7 +552,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "DELAYS",
 "emails": [
-"brittany.dixon@rtmec.com",
 "alex.babusci@rtmec.com",
 "matthew.deleo@rtmec.com"
 ]
@@ -560,7 +577,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "DELAYS",
 "emails": [
-"jess.iverson@rtmec.com",
 "alex.babusci@rtmec.com",
 "hope.huenecke@rtmec.com"
 ]
@@ -884,10 +900,10 @@ export const SEED_TRACKER = [
 "client": "JTS ARCHITECTS",
 "pm": "Andrew Gustafson",
 "ml": "Alex Babusci",
-"me": "Alex Babusci and John Wolfe",
+"me": "Alex Babusci\nJohn Wolfe",
 "pe": "Dan King",
 "ee": "Andrew Gustafson",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "WAITING ON ARCHITECT",
 "dueDates": "",
 "bidPermitDate": "",
@@ -916,7 +932,7 @@ export const SEED_TRACKER = [
 "me": "Hope Huenecke",
 "pe": "",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "6/14: DD3\n6/18: IFP",
 "dueDates": "",
 "bidPermitDate": "",
@@ -944,7 +960,7 @@ export const SEED_TRACKER = [
 "me": "",
 "pe": "Dan King",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PENDING KICKOFF",
 "dueDates": "",
 "bidPermitDate": "",
@@ -1020,8 +1036,8 @@ export const SEED_TRACKER = [
 "ml": "John Wolfe",
 "me": "Claire Palmer",
 "pe": "Dan King",
-"ee": "Jessica Sembdner and JEREMY",
-"fp": "Jimmy Yakubov and James Barnickel",
+"ee": "Jessica Sembdner\nJEREMY",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 5/19\nSURVEY TBD\n6/5 PERMIT",
 "dueDates": "",
 "bidPermitDate": "6/5/2026",
@@ -1034,7 +1050,6 @@ export const SEED_TRACKER = [
 "claire.palmer@rtmec.com",
 "dan.king@rtmec.com",
 "jessica.sembdner@rtmec.com",
-"jeremy@rtmec.com",
 "jimmy.yakubov@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
@@ -1051,7 +1066,7 @@ export const SEED_TRACKER = [
 "me": "Matthew DeLeo",
 "pe": "Matthew DeLeo",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 5/8\n6/4: DD2\n6/11: PAGE TURN\n6/14: IFP/IFB",
 "dueDates": "6/4/2026",
 "bidPermitDate": "6/14/2026",
@@ -1186,7 +1201,7 @@ export const SEED_TRACKER = [
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 4/24\n5/22 DD",
 "dueDates": "",
 "bidPermitDate": "",
@@ -1212,7 +1227,7 @@ export const SEED_TRACKER = [
 "pm": "Andrew Gustafson",
 "ml": "John Wolfe",
 "me": "Hope Huenecke",
-"pe": "Claire Palmer and Dan King",
+"pe": "Claire Palmer\nDan King",
 "ee": "Madison Huschak",
 "fp": "Jimmy Yakubov",
 "statusNotes": "PROJECT SET UP ON 4/21\n(Kitchen) IFP - 6/9",
@@ -1244,7 +1259,7 @@ export const SEED_TRACKER = [
 "me": "",
 "pe": "",
 "ee": "Byshop Williams",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 4/17\nWAITING ON ARCHITECT",
 "dueDates": "",
 "bidPermitDate": "",
@@ -1271,7 +1286,7 @@ export const SEED_TRACKER = [
 "me": "Gabriel Ferguson",
 "pe": "Dan King",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 4/15\n60% COORDINATION DRAWINGS DUE- 6/5 \n90% OWNER/BRAND REVIEW \u2013 6/26 \nFINAL COORDINATION DRAWINGS DUE- 7/17 \nBID PERMIT - 7/31",
 "dueDates": "6/5/2026",
 "bidPermitDate": "7/31/2026",
@@ -1357,9 +1372,9 @@ export const SEED_TRACKER = [
 "pm": "Alex Babusci",
 "ml": "Alex Babusci",
 "me": "Hope Huenecke",
-"pe": "John Wolfe and Claire Palmer",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "100% SET 4/1",
 "dueDates": "",
 "bidPermitDate": "",
@@ -1386,9 +1401,9 @@ export const SEED_TRACKER = [
 "client": "WALT DISNEY WORLD RESORTS",
 "pm": "DALRIO",
 "ml": "Alex Babusci",
-"me": "Matthew DeLeo and Claire Palmer",
+"me": "Matthew DeLeo\nClaire Palmer",
 "pe": "",
-"ee": "Andrew Gustafson and Madison Huschak and JESS",
+"ee": "Andrew Gustafson\nMadison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "DD 5/6",
 "dueDates": "",
@@ -1398,13 +1413,12 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "STUDIO CONSULTING",
 "emails": [
-"dalrio@rtmec.com",
 "alex.babusci@rtmec.com",
 "matthew.deleo@rtmec.com",
 "claire.palmer@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com"
+"jessica.sembdner@rtmec.com"
 ]
 },
 {
@@ -1416,7 +1430,7 @@ export const SEED_TRACKER = [
 "client": "STUDIO 222 ARCHITECTS",
 "pm": "BRITTANY",
 "ml": "SEATTLE",
-"me": "Alex Babusci and Matthew DeLeo",
+"me": "Alex Babusci\nMatthew DeLeo",
 "pe": "SEATTLE",
 "ee": "SEATTLE",
 "fp": "",
@@ -1428,7 +1442,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "STUDIO CONSULTING",
 "emails": [
-"brittany@rtmec.com",
 "alex.babusci@rtmec.com",
 "matthew.deleo@rtmec.com"
 ]
@@ -1444,7 +1457,7 @@ export const SEED_TRACKER = [
 "ml": "Alex Babusci",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Madison Huschak and Andrew Gustafson",
+"ee": "Madison Huschak\nAndrew Gustafson",
 "fp": "Jimmy Yakubov",
 "statusNotes": "WAITING ON PERMIT COMMENTS",
 "dueDates": "",
@@ -1468,7 +1481,7 @@ export const SEED_TRACKER = [
 "mepCentralHost": "WMA REVIT 2025 ACC",
 "vantagepoint": "26.003705.1733",
 "client": "WARE MALCOMB",
-"pm": "Madison Huschak and Hope Huenecke",
+"pm": "Madison Huschak\nHope Huenecke",
 "ml": "Hope Huenecke",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
@@ -1499,7 +1512,7 @@ export const SEED_TRACKER = [
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
 "ee": "Byshop Williams",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 5/6\nPROGRESS 5/18\nPERMIT 5/22",
 "dueDates": "",
 "bidPermitDate": "",
@@ -1527,7 +1540,7 @@ export const SEED_TRACKER = [
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
 "ee": "Byshop Williams",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PROJECT SET UP ON 5/7\nPROGRESS 5/18\nPERMIT 5/22",
 "dueDates": "",
 "bidPermitDate": "",
@@ -1875,7 +1888,7 @@ export const SEED_TRACKER = [
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "IFP 3/23",
 "dueDates": "",
 "bidPermitDate": "3/23/2026",
@@ -1902,7 +1915,7 @@ export const SEED_TRACKER = [
 "ml": "Alex Babusci",
 "me": "Matthew DeLeo",
 "pe": "Hope Huenecke",
-"ee": "Andrew Gustafson and Byshop Williams",
+"ee": "Andrew Gustafson\nByshop Williams",
 "fp": "",
 "statusNotes": "3/16/2026",
 "dueDates": "3/16/2026",
@@ -1955,7 +1968,7 @@ export const SEED_TRACKER = [
 "ml": "Alex Babusci",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Madison Huschak and Andrew Gustafson",
+"ee": "Madison Huschak\nAndrew Gustafson",
 "fp": "",
 "statusNotes": "Issue for Permit 2/13",
 "dueDates": "",
@@ -2148,7 +2161,7 @@ export const SEED_TRACKER = [
 "me": "Matthew DeLeo",
 "pe": "Matthew DeLeo",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "NARRATIVE 2/11",
 "dueDates": "2/11/2026",
 "bidPermitDate": "",
@@ -2242,8 +2255,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"gabriel.ferguson@rtmec.com",
-"sergio@rtmec.com"
+"gabriel.ferguson@rtmec.com"
 ]
 },
 {
@@ -2258,7 +2270,7 @@ export const SEED_TRACKER = [
 "me": "Hope Huenecke",
 "pe": "Matthew DeLeo",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "IFB 2/6",
 "dueDates": "",
 "bidPermitDate": "2/6/2026",
@@ -2314,8 +2326,8 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Matthew DeLeo",
-"ee": "Jessica Sembdner and Andrew Gustafson",
-"fp": "James Barnickel and Jimmy Yakubov",
+"ee": "Jessica Sembdner\nAndrew Gustafson",
+"fp": "James Barnickel\nJimmy Yakubov",
 "statusNotes": "WAITING ON COMMENTS",
 "dueDates": "",
 "bidPermitDate": "",
@@ -2341,8 +2353,8 @@ export const SEED_TRACKER = [
 "client": "JONES LANG LASALLE",
 "pm": "John Wolfe",
 "ml": "",
-"me": "Claire Palmer and Habiba Watfa",
-"pe": "Claire Palmer and Habiba Watfa",
+"me": "Claire Palmer\nHabiba Watfa",
+"pe": "Claire Palmer\nHabiba Watfa",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "WAITING ON PERMIT COMMENTS",
@@ -2396,7 +2408,7 @@ export const SEED_TRACKER = [
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PERMIT 12/18",
 "dueDates": "",
 "bidPermitDate": "",
@@ -2453,7 +2465,7 @@ export const SEED_TRACKER = [
 "me": "Matthew DeLeo",
 "pe": "Hope Huenecke",
 "ee": "Andrew Gustafson",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "WAITING FOR PERMIT COMMENTS",
 "dueDates": "",
 "bidPermitDate": "",
@@ -2480,7 +2492,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Matthew DeLeo",
-"ee": "Madison Huschak and Jessica Sembdner",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "PERMIT SUBMISSION, DATE TBD",
 "dueDates": "",
@@ -2509,7 +2521,7 @@ export const SEED_TRACKER = [
 "me": "Matthew DeLeo",
 "pe": "Matthew DeLeo",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "IFP/IFB 1/16",
 "dueDates": "",
 "bidPermitDate": "1/16/2026",
@@ -2589,7 +2601,7 @@ export const SEED_TRACKER = [
 "me": "Habiba Watfa",
 "pe": "Habiba Watfa",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "IFP 1/6?",
 "dueDates": "",
 "bidPermitDate": "1/6/2026",
@@ -2627,8 +2639,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"gabriel.ferguson@rtmec.com",
-"sergio@rtmec.com"
+"gabriel.ferguson@rtmec.com"
 ]
 },
 {
@@ -2653,8 +2664,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"gabriel.ferguson@rtmec.com",
-"sergio@rtmec.com"
+"gabriel.ferguson@rtmec.com"
 ]
 },
 {
@@ -2679,8 +2689,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"gabriel.ferguson@rtmec.com",
-"sergio@rtmec.com"
+"gabriel.ferguson@rtmec.com"
 ]
 },
 {
@@ -2719,10 +2728,10 @@ export const SEED_TRACKER = [
 "client": "CVG",
 "pm": "John Wolfe",
 "ml": "",
-"me": "ANTHONY and Claire Palmer",
+"me": "ANTHONY\nClaire Palmer",
 "pe": "Gabriel Ferguson",
 "ee": "Byshop Williams",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "TRAINING ROOM HVAC REVISION (ASR)",
 "dueDates": "",
 "bidPermitDate": "",
@@ -2732,7 +2741,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"anthony@rtmec.com",
 "claire.palmer@rtmec.com",
 "gabriel.ferguson@rtmec.com",
 "byshop.williams@rtmec.com",
@@ -2750,7 +2758,7 @@ export const SEED_TRACKER = [
 "pm": "John Wolfe",
 "ml": "",
 "me": "Claire Palmer",
-"pe": "Claire Palmer and Habiba Watfa",
+"pe": "Claire Palmer\nHabiba Watfa",
 "ee": "Jessica Sembdner",
 "fp": "",
 "statusNotes": "PERMIT 12/3",
@@ -2788,8 +2796,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"andrew.gustafson@rtmec.com",
-"tyler@rtmec.com"
+"andrew.gustafson@rtmec.com"
 ]
 },
 {
@@ -2803,7 +2810,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Matthew DeLeo",
 "pe": "Matthew DeLeo",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "James Barnickel",
 "statusNotes": "11/18 PERMIT SET",
 "dueDates": "",
@@ -2829,7 +2836,7 @@ export const SEED_TRACKER = [
 "client": "ARCADIS, INC.",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
 "pe": "",
 "ee": "ANOOP",
 "fp": "",
@@ -2842,8 +2849,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"claire.palmer@rtmec.com",
-"anoop@rtmec.com"
+"claire.palmer@rtmec.com"
 ]
 },
 {
@@ -2919,7 +2925,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"tyler@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
@@ -2933,10 +2938,10 @@ export const SEED_TRACKER = [
 "client": "WARE MALCOMB",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
+"me": "Alex Babusci\nHope Huenecke",
 "pe": "Claire Palmer",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "REVISIONS",
 "dueDates": "",
 "bidPermitDate": "",
@@ -2964,7 +2969,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Gabriel Ferguson",
-"ee": "Madison Huschak and Jessica Sembdner",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "James Barnickel",
 "statusNotes": "IFP 10/29",
 "dueDates": "",
@@ -2994,7 +2999,7 @@ export const SEED_TRACKER = [
 "me": "Alex Babusci",
 "pe": "Hope Huenecke",
 "ee": "Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "IFP 10/31",
 "dueDates": "",
 "bidPermitDate": "10/31/2025",
@@ -3144,10 +3149,10 @@ export const SEED_TRACKER = [
 "client": "LEGAT ARCHITECTS",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Matthew DeLeo",
+"me": "Alex Babusci\nMatthew DeLeo",
 "pe": "Hope Huenecke",
-"ee": "Madison Huschak and JESS",
-"fp": "Jimmy Yakubov and James Barnickel",
+"ee": "Madison Huschak\nJessica Sembdner",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "RFI",
 "dueDates": "",
 "bidPermitDate": "",
@@ -3160,7 +3165,7 @@ export const SEED_TRACKER = [
 "matthew.deleo@rtmec.com",
 "hope.huenecke@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com",
+"jessica.sembdner@rtmec.com",
 "jimmy.yakubov@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
@@ -3176,7 +3181,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "BEN L",
 "pe": "BEN L",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "",
 "statusNotes": "",
 "dueDates": "",
@@ -3186,7 +3191,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"ben.l@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "madison.huschak@rtmec.com"
 ]
@@ -3202,7 +3206,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "Matthew DeLeo",
-"ee": "Madison Huschak and Jessica Sembdner",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "IFP 9/22",
 "dueDates": "",
@@ -3254,10 +3258,10 @@ export const SEED_TRACKER = [
 "client": "JONES LANG LASALLE",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
-"pe": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "REVIEW SET\nPERMIT 10/3",
 "dueDates": "10/1/2025",
 "bidPermitDate": "10/3/2025",
@@ -3334,10 +3338,10 @@ export const SEED_TRACKER = [
 "client": "RWE DESIGN BUILD",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Habiba Watfa",
-"pe": "Hope Huenecke and Habiba Watfa",
-"ee": "Madison Huschak and Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"me": "Alex Babusci\nHabiba Watfa",
+"pe": "Hope Huenecke\nHabiba Watfa",
+"ee": "Madison Huschak\nJessica Sembdner",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "PERMIT COMMENTS DUE",
 "dueDates": "9/24/2025",
 "bidPermitDate": "",
@@ -3364,9 +3368,9 @@ export const SEED_TRACKER = [
 "client": "RWE DESIGN BUILD",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Matthew DeLeo",
+"me": "John Wolfe\nMatthew DeLeo",
 "pe": "Gabriel Ferguson",
-"ee": "Madison Huschak and Jessica Sembdner",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "PERMIT COMMENTS",
 "dueDates": "10/7/2025",
@@ -3392,10 +3396,10 @@ export const SEED_TRACKER = [
 "client": "RWE DESIGN BUILD",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "ANTHONY and John Wolfe",
+"me": "ANTHONY\nJohn Wolfe",
 "pe": "Gabriel Ferguson",
-"ee": "Madison Huschak and Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"ee": "Madison Huschak\nJessica Sembdner",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "9/15 PERMIT",
 "dueDates": "",
 "bidPermitDate": "9/15/2025",
@@ -3405,7 +3409,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"anthony@rtmec.com",
 "john.wolfe@rtmec.com",
 "gabriel.ferguson@rtmec.com",
 "madison.huschak@rtmec.com",
@@ -3474,7 +3477,7 @@ export const SEED_TRACKER = [
 "client": "TRUENORTH",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
 "pe": "",
 "ee": "",
 "fp": "",
@@ -3501,7 +3504,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "John Wolfe",
 "pe": "Gabriel Ferguson",
-"ee": "Madison Huschak and Jessica Sembdner",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "PERMIT COMMENTS EOD 8/26 PUT ON PLANNER",
 "dueDates": "",
@@ -3530,7 +3533,7 @@ export const SEED_TRACKER = [
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
 "ee": "Byshop Williams",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "90% SENT 6/23",
 "dueDates": "",
 "bidPermitDate": "7/24/2025",
@@ -3557,8 +3560,8 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Claire Palmer",
 "pe": "Matthew DeLeo",
-"ee": "Madison Huschak and Jessica Sembdner",
-"fp": "Jimmy Yakubov and James Barnickel",
+"ee": "Madison Huschak\nJessica Sembdner",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "",
 "dueDates": "",
 "bidPermitDate": "7/30/2025",
@@ -3620,8 +3623,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "alex.babusci@rtmec.com",
-"matthew.deleo@rtmec.com",
-"tom.d@rtmec.com"
+"matthew.deleo@rtmec.com"
 ]
 },
 {
@@ -3661,8 +3663,8 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "",
-"ee": "Jessica Sembdner and Andrew Gustafson",
-"fp": "Jimmy Yakubov and James Barnickel",
+"ee": "Jessica Sembdner\nAndrew Gustafson",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "ISSUE FOR BID",
 "dueDates": "7/21/2025",
 "bidPermitDate": "7/10/2025",
@@ -3689,7 +3691,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
-"ee": "ANOOP and SERGIO",
+"ee": "ANOOP\nSERGIO",
 "fp": "James Barnickel",
 "statusNotes": "SURVEY COMPLETE",
 "dueDates": "",
@@ -3701,8 +3703,6 @@ export const SEED_TRACKER = [
 "emails": [
 "john.wolfe@rtmec.com",
 "gabriel.ferguson@rtmec.com",
-"anoop@rtmec.com",
-"sergio@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -3717,7 +3717,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
-"ee": "ANOOP and SERGIO",
+"ee": "ANOOP\nSERGIO",
 "fp": "",
 "statusNotes": "",
 "dueDates": "7/8/2025",
@@ -3728,9 +3728,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"gabriel.ferguson@rtmec.com",
-"anoop@rtmec.com",
-"sergio@rtmec.com"
+"gabriel.ferguson@rtmec.com"
 ]
 },
 {
@@ -3744,7 +3742,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
-"ee": "ANOOP and SERGIO",
+"ee": "ANOOP\nSERGIO",
 "fp": "James Barnickel",
 "statusNotes": "",
 "dueDates": "",
@@ -3756,8 +3754,6 @@ export const SEED_TRACKER = [
 "emails": [
 "john.wolfe@rtmec.com",
 "gabriel.ferguson@rtmec.com",
-"anoop@rtmec.com",
-"sergio@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -3770,10 +3766,10 @@ export const SEED_TRACKER = [
 "client": "HKS",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Hope Huenecke and Alex Babusci",
-"pe": "Hope Huenecke and Alex Babusci",
+"me": "Hope Huenecke\nAlex Babusci",
+"pe": "Hope Huenecke\nAlex Babusci",
 "ee": "Madison Huschak",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "75% SENT 6/4",
 "dueDates": "",
 "bidPermitDate": "7/3/2025",
@@ -3800,7 +3796,7 @@ export const SEED_TRACKER = [
 "pm": "Andrew Gustafson",
 "ml": "",
 "me": "Matthew DeLeo",
-"pe": "Hope Huenecke and Habiba Watfa",
+"pe": "Hope Huenecke\nHabiba Watfa",
 "ee": "Madison Huschak",
 "fp": "",
 "statusNotes": "PROGRESS SENT 6/26",
@@ -3829,7 +3825,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Alex Babusci",
 "pe": "Alex Babusci",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "James Barnickel",
 "statusNotes": "THIRD FLOOR SCOPE",
 "dueDates": "6/30/2025",
@@ -3884,7 +3880,7 @@ export const SEED_TRACKER = [
 "me": "ALAN",
 "pe": "Claire Palmer",
 "ee": "Byshop Williams",
-"fp": "FROILAN and Jimmy Yakubov",
+"fp": "FROILAN\nJimmy Yakubov",
 "statusNotes": "PERMIT",
 "dueDates": "7/8/2025",
 "bidPermitDate": "",
@@ -3894,10 +3890,8 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"alan@rtmec.com",
 "claire.palmer@rtmec.com",
 "byshop.williams@rtmec.com",
-"froilan@rtmec.com",
 "jimmy.yakubov@rtmec.com"
 ]
 },
@@ -3946,7 +3940,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"dale@rtmec.com",
 "andrew.gustafson@rtmec.com"
 ]
 },
@@ -3960,7 +3953,7 @@ export const SEED_TRACKER = [
 "pm": "Alex Babusci",
 "ml": "",
 "me": "Hope Huenecke",
-"pe": "Claire Palmer and John Wolfe",
+"pe": "Claire Palmer\nJohn Wolfe",
 "ee": "Byshop Williams",
 "fp": "",
 "statusNotes": "",
@@ -3999,10 +3992,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"aaron.burch@rtmec.com",
-"jesvic@rtmec.com",
-"mary@rtmec.com",
-"mark.c@rtmec.com"
+"aaron.burch@rtmec.com"
 ]
 },
 {
@@ -4014,7 +4004,7 @@ export const SEED_TRACKER = [
 "client": "WARE MALCOMB",
 "pm": "ADAM",
 "ml": "",
-"me": "ADAM and Alex Babusci",
+"me": "ADAM\nAlex Babusci",
 "pe": "Ryan Swims",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
@@ -4026,9 +4016,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"adam@rtmec.com",
 "alex.babusci@rtmec.com",
-"ryan.swims@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
@@ -4068,9 +4056,9 @@ export const SEED_TRACKER = [
 "client": "AD3 STUDIO",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Habiba Watfa and Alex Babusci",
-"pe": "Claire Palmer and John Wolfe",
-"ee": "Andrew Gustafson and Madison Huschak",
+"me": "Habiba Watfa\nAlex Babusci",
+"pe": "Claire Palmer\nJohn Wolfe",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "James Barnickel",
 "statusNotes": "PERMIT",
 "dueDates": "6/6/2025",
@@ -4149,7 +4137,7 @@ export const SEED_TRACKER = [
 "client": "TRUENORTH",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Ryan Swims",
+"me": "John Wolfe\nRyan Swims",
 "pe": "",
 "ee": "",
 "fp": "",
@@ -4161,8 +4149,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"john.wolfe@rtmec.com",
-"ryan.swims@rtmec.com"
+"john.wolfe@rtmec.com"
 ]
 },
 {
@@ -4200,10 +4187,10 @@ export const SEED_TRACKER = [
 "client": "LINDEN GROUP ARCHITECTS",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
+"me": "Alex Babusci\nHope Huenecke",
 "pe": "Gabriel Ferguson",
 "ee": "Andrew Gustafson",
-"fp": "Jimmy Yakubov and James Barnickel",
+"fp": "Jimmy Yakubov\nJames Barnickel",
 "statusNotes": "",
 "dueDates": "",
 "bidPermitDate": "2/13/2025",
@@ -4230,7 +4217,7 @@ export const SEED_TRACKER = [
 "pm": "Andrew Gustafson",
 "ml": "",
 "me": "Alex Babusci",
-"pe": "Jeff Piluski",
+"pe": "David Piluski",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "DD SET",
@@ -4243,7 +4230,7 @@ export const SEED_TRACKER = [
 "emails": [
 "andrew.gustafson@rtmec.com",
 "alex.babusci@rtmec.com",
-"jeff.piluski@rtmec.com",
+"david.piluski@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -4423,8 +4410,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"john.wolfe@rtmec.com",
-"ryan.swims@rtmec.com"
+"john.wolfe@rtmec.com"
 ]
 },
 {
@@ -4548,7 +4534,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"tyler@rtmec.com",
 "andrew.gustafson@rtmec.com"
 ]
 },
@@ -4563,7 +4548,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "SAL",
 "pe": "SAL",
-"ee": "Byshop Williams and Andrew Gustafson",
+"ee": "Byshop Williams\nAndrew Gustafson",
 "fp": "",
 "statusNotes": "PHASE II PERMIT",
 "dueDates": "3/31/2025",
@@ -4573,7 +4558,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"sal@rtmec.com",
 "byshop.williams@rtmec.com",
 "andrew.gustafson@rtmec.com"
 ]
@@ -4600,8 +4584,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"claire.palmer@rtmec.com",
-"anoop@rtmec.com"
+"claire.palmer@rtmec.com"
 ]
 },
 {
@@ -4613,7 +4596,7 @@ export const SEED_TRACKER = [
 "client": "LEGAT ARCHITECTS",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
 "pe": "John Wolfe",
 "ee": "ANOOP",
 "fp": "James Barnickel",
@@ -4627,7 +4610,6 @@ export const SEED_TRACKER = [
 "emails": [
 "john.wolfe@rtmec.com",
 "claire.palmer@rtmec.com",
-"anoop@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -4640,9 +4622,9 @@ export const SEED_TRACKER = [
 "client": "AD3 STUDIO",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "BRITT and SEATTLE",
-"pe": "BRITT and SEATTLE",
-"ee": "SEATTLE and CONNOR",
+"me": "BRITT\nSEATTLE",
+"pe": "BRITT\nSEATTLE",
+"ee": "SEATTLE\nCONNOR",
 "fp": "",
 "statusNotes": "CLIENT REVIEW",
 "dueDates": "2/19/2025",
@@ -4652,9 +4634,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"alex.babusci@rtmec.com",
-"britt@rtmec.com",
-"connor@rtmec.com"
+"alex.babusci@rtmec.com"
 ]
 },
 {
@@ -4667,7 +4647,7 @@ export const SEED_TRACKER = [
 "pm": "John Wolfe",
 "ml": "",
 "me": "BRYAN B",
-"pe": "John Wolfe and Claire Palmer",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "ANOOP",
 "fp": "James Barnickel",
 "statusNotes": "PERMIT",
@@ -4679,9 +4659,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"bryan.b@rtmec.com",
 "claire.palmer@rtmec.com",
-"anoop@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -4694,8 +4672,8 @@ export const SEED_TRACKER = [
 "client": "RWE DESIGN BUILD",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
-"pe": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "",
 "fp": "",
 "statusNotes": "PERMIT REVISIONS",
@@ -4721,7 +4699,7 @@ export const SEED_TRACKER = [
 "pm": "John Wolfe",
 "ml": "",
 "me": "Claire Palmer",
-"pe": "Alex Babusci and OTHERS",
+"pe": "Alex Babusci\nOTHERS",
 "ee": "ANOOP",
 "fp": "James Barnickel",
 "statusNotes": "",
@@ -4735,7 +4713,6 @@ export const SEED_TRACKER = [
 "john.wolfe@rtmec.com",
 "claire.palmer@rtmec.com",
 "alex.babusci@rtmec.com",
-"anoop@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -4748,8 +4725,8 @@ export const SEED_TRACKER = [
 "client": "SGA DESIGN GROUP",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Gabriel Ferguson and John Wolfe",
-"pe": "Gabriel Ferguson and John Wolfe",
+"me": "Gabriel Ferguson\nJohn Wolfe",
+"pe": "Gabriel Ferguson\nJohn Wolfe",
 "ee": "Byshop Williams",
 "fp": "James Barnickel",
 "statusNotes": "100% BACK CHECK SENT 2/17",
@@ -4776,7 +4753,7 @@ export const SEED_TRACKER = [
 "client": "LEGAT ARCHITECTS",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
 "pe": "John Wolfe",
 "ee": "ANOOP",
 "fp": "James Barnickel",
@@ -4790,7 +4767,6 @@ export const SEED_TRACKER = [
 "emails": [
 "john.wolfe@rtmec.com",
 "claire.palmer@rtmec.com",
-"anoop@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -4815,8 +4791,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"alex.babusci@rtmec.com",
-"tom.d@rtmec.com"
+"alex.babusci@rtmec.com"
 ]
 },
 {
@@ -4828,7 +4803,7 @@ export const SEED_TRACKER = [
 "client": "TRUENORTH",
 "pm": "John Wolfe",
 "ml": "",
-"me": "Ryan Swims and Claire Palmer",
+"me": "Ryan Swims\nClaire Palmer",
 "pe": "",
 "ee": "",
 "fp": "",
@@ -4841,7 +4816,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"ryan.swims@rtmec.com",
 "claire.palmer@rtmec.com"
 ]
 },
@@ -4854,8 +4828,8 @@ export const SEED_TRACKER = [
 "client": "CHARLES VINCENT GEORGE ARCHITECTS",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
-"pe": "Alex Babusci and Hope Huenecke",
+"me": "Alex Babusci\nHope Huenecke",
+"pe": "Alex Babusci\nHope Huenecke",
 "ee": "Andrew Gustafson",
 "fp": "",
 "statusNotes": "",
@@ -4925,7 +4899,7 @@ export const SEED_TRACKER = [
 "pm": "John Wolfe",
 "ml": "",
 "me": "Claire Palmer",
-"pe": "Claire Palmer and Ryan Swims",
+"pe": "Claire Palmer\nRyan Swims",
 "ee": "ANOOP",
 "fp": "Jimmy Yakubov",
 "statusNotes": "99% IFP",
@@ -4938,8 +4912,6 @@ export const SEED_TRACKER = [
 "emails": [
 "john.wolfe@rtmec.com",
 "claire.palmer@rtmec.com",
-"ryan.swims@rtmec.com",
-"anoop@rtmec.com",
 "jimmy.yakubov@rtmec.com"
 ]
 },
@@ -4954,7 +4926,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "",
 "statusNotes": "REVISED EQUIPMENT UPDATES",
 "dueDates": "2/18/2025",
@@ -4991,8 +4963,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "alex.babusci@rtmec.com",
-"hope.huenecke@rtmec.com",
-"tom.d@rtmec.com"
+"hope.huenecke@rtmec.com"
 ]
 },
 {
@@ -5017,8 +4988,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "alex.babusci@rtmec.com",
-"matthew.deleo@rtmec.com",
-"tom.d@rtmec.com"
+"matthew.deleo@rtmec.com"
 ]
 },
 {
@@ -5032,7 +5002,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Matthew DeLeo",
-"ee": "Madison Huschak and JESS",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "",
 "dueDates": "",
@@ -5046,7 +5016,7 @@ export const SEED_TRACKER = [
 "hope.huenecke@rtmec.com",
 "matthew.deleo@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com"
+"jessica.sembdner@rtmec.com"
 ]
 },
 {
@@ -5060,7 +5030,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Madison Huschak and JESS",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "",
 "dueDates": "",
@@ -5073,7 +5043,7 @@ export const SEED_TRACKER = [
 "alex.babusci@rtmec.com",
 "hope.huenecke@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com"
+"jessica.sembdner@rtmec.com"
 ]
 },
 {
@@ -5098,7 +5068,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "alex.babusci@rtmec.com",
-"nick.w@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -5124,7 +5093,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"jonathan@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -5193,7 +5161,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Matthew DeLeo",
 "pe": "Matthew DeLeo",
-"ee": "Madison Huschak and JESS",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "PRELIMINARY SET (EQUIPMENT COORD)",
 "dueDates": "11/15/2024",
@@ -5206,7 +5174,7 @@ export const SEED_TRACKER = [
 "alex.babusci@rtmec.com",
 "matthew.deleo@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com"
+"jessica.sembdner@rtmec.com"
 ]
 },
 {
@@ -5220,7 +5188,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Madison Huschak and JESS",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "IFC ~1/31",
 "dueDates": "",
@@ -5233,7 +5201,7 @@ export const SEED_TRACKER = [
 "andrew.gustafson@rtmec.com",
 "hope.huenecke@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com"
+"jessica.sembdner@rtmec.com"
 ]
 },
 {
@@ -5274,7 +5242,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Madison Huschak and JESS",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "DD3 1/21",
 "dueDates": "1/21/2025",
@@ -5287,7 +5255,7 @@ export const SEED_TRACKER = [
 "andrew.gustafson@rtmec.com",
 "hope.huenecke@rtmec.com",
 "madison.huschak@rtmec.com",
-"jess@rtmec.com"
+"jessica.sembdner@rtmec.com"
 ]
 },
 {
@@ -5299,8 +5267,8 @@ export const SEED_TRACKER = [
 "client": "CHARLES VINCENT GEORGE ARCHITECTS",
 "pm": "John Wolfe",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
-"pe": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "IOWA",
 "fp": "Jimmy Yakubov",
 "statusNotes": "LL COMMENTS",
@@ -5325,9 +5293,9 @@ export const SEED_TRACKER = [
 "client": "PWM ARCHITECTURE LLC",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Gabriel Ferguson",
-"pe": "Alex Babusci and Gabriel Ferguson",
-"ee": "Andrew Gustafson and Madison Huschak",
+"me": "Alex Babusci\nGabriel Ferguson",
+"pe": "Alex Babusci\nGabriel Ferguson",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "James Barnickel",
 "statusNotes": "ASR - PHASE I REWORK - PERMIT COMMENTS",
 "dueDates": "1/3/2025",
@@ -5390,7 +5358,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"alex.j@rtmec.com",
 "madison.huschak@rtmec.com"
 ]
 },
@@ -5455,9 +5422,9 @@ export const SEED_TRACKER = [
 "client": "PWM ARCHITECTURE LLC",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Gabriel Ferguson",
-"pe": "Alex Babusci and Gabriel Ferguson",
-"ee": "Andrew Gustafson and Madison Huschak",
+"me": "Alex Babusci\nGabriel Ferguson",
+"pe": "Alex Babusci\nGabriel Ferguson",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "James Barnickel",
 "statusNotes": "",
 "dueDates": "",
@@ -5483,9 +5450,9 @@ export const SEED_TRACKER = [
 "client": "EARLES ARCHITECTS AND ASSOCIATES",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
-"pe": "Alex Babusci and Hope Huenecke",
-"ee": "Andrew Gustafson and Byshop Williams",
+"me": "Alex Babusci\nHope Huenecke",
+"pe": "Alex Babusci\nHope Huenecke",
+"ee": "Andrew Gustafson\nByshop Williams",
 "fp": "",
 "statusNotes": "",
 "dueDates": "10/30/2024",
@@ -5512,7 +5479,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "",
 "pe": "",
-"ee": "ANOOP and Andrew Gustafson",
+"ee": "ANOOP\nAndrew Gustafson",
 "fp": "",
 "statusNotes": "UTILITY COORDINATION",
 "dueDates": "",
@@ -5522,8 +5489,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"andrew.gustafson@rtmec.com",
-"anoop@rtmec.com"
+"andrew.gustafson@rtmec.com"
 ]
 },
 {
@@ -5536,7 +5502,7 @@ export const SEED_TRACKER = [
 "pm": "Andrew Gustafson",
 "ml": "",
 "me": "CHAD WETZEL",
-"pe": "Jeff Piluski",
+"pe": "David Piluski",
 "ee": "Andrew Gustafson",
 "fp": "",
 "statusNotes": "DD SET",
@@ -5548,8 +5514,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"chad.wetzel@rtmec.com",
-"jeff.piluski@rtmec.com"
+"david.piluski@rtmec.com"
 ]
 },
 {
@@ -5573,7 +5538,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"dale@rtmec.com",
 "madison.huschak@rtmec.com"
 ]
 },
@@ -5588,7 +5552,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "",
 "pe": "",
-"ee": "Madison Huschak and Jessica Sembdner",
+"ee": "Madison Huschak\nJessica Sembdner",
 "fp": "",
 "statusNotes": "",
 "dueDates": "",
@@ -5757,7 +5721,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"alex.j@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -5795,8 +5758,8 @@ export const SEED_TRACKER = [
 "client": "STUDIO 222 ARCHITECTS",
 "pm": "",
 "ml": "",
-"me": "Hope Huenecke and Habiba Watfa",
-"pe": "Hope Huenecke and Habiba Watfa",
+"me": "Hope Huenecke\nHabiba Watfa",
+"pe": "Hope Huenecke\nHabiba Watfa",
 "ee": "",
 "fp": "James Barnickel",
 "statusNotes": "",
@@ -5822,7 +5785,7 @@ export const SEED_TRACKER = [
 "pm": "Andrew Gustafson",
 "ml": "",
 "me": "TYLER",
-"pe": "Jeff Piluski",
+"pe": "David Piluski",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "",
@@ -5834,8 +5797,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"tyler@rtmec.com",
-"jeff.piluski@rtmec.com",
+"david.piluski@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -5873,8 +5835,8 @@ export const SEED_TRACKER = [
 "client": "RWE DESIGN BUILD",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "ADAM and TYLER",
-"pe": "ADAM and TYLER",
+"me": "ADAM\nTYLER",
+"pe": "ADAM\nTYLER",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "",
@@ -5886,8 +5848,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"adam@rtmec.com",
-"tyler@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -5902,7 +5862,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "",
 "statusNotes": "BID SET",
 "dueDates": "8/2/2024",
@@ -5929,7 +5889,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Hope Huenecke",
 "pe": "Hope Huenecke",
-"ee": "Andrew Gustafson and Madison Huschak",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "",
 "statusNotes": "",
 "dueDates": "",
@@ -5956,7 +5916,7 @@ export const SEED_TRACKER = [
 "ml": "",
 "me": "Gabriel Ferguson",
 "pe": "Gabriel Ferguson",
-"ee": "Madison Huschak and Byshop Williams",
+"ee": "Madison Huschak\nByshop Williams",
 "fp": "James Barnickel",
 "statusNotes": "",
 "dueDates": "",
@@ -6007,9 +5967,9 @@ export const SEED_TRACKER = [
 "client": "HKS",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
-"pe": "Alex Babusci and Hope Huenecke",
-"ee": "Andrew Gustafson and Madison Huschak",
+"me": "Alex Babusci\nHope Huenecke",
+"pe": "Alex Babusci\nHope Huenecke",
+"ee": "Andrew Gustafson\nMadison Huschak",
 "fp": "James Barnickel",
 "statusNotes": "",
 "dueDates": "",
@@ -6072,8 +6032,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"alex.babusci@rtmec.com",
-"tom.d@rtmec.com"
+"alex.babusci@rtmec.com"
 ]
 },
 {
@@ -6107,7 +6066,7 @@ export const SEED_TRACKER = [
 "mepCentralHost": "",
 "vantagepoint": "22.NWS.017",
 "client": "NWS ARCHITECTS",
-"pm": "DAVE",
+"pm": "David Piluski",
 "ml": "",
 "me": "John Wolfe",
 "pe": "John Wolfe",
@@ -6121,7 +6080,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"dave@rtmec.com",
+"david.piluski@rtmec.com",
 "john.wolfe@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "james.barnickel@rtmec.com"
@@ -6148,7 +6107,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"dale@rtmec.com",
 "andrew.gustafson@rtmec.com"
 ]
 },
@@ -6185,7 +6143,7 @@ export const SEED_TRACKER = [
 "mepCentralHost": "",
 "vantagepoint": "22.SGH.005",
 "client": "SAAVEDRA GROUP ARCHITECTS",
-"pm": "DAVE",
+"pm": "David Piluski",
 "ml": "",
 "me": "John Wolfe",
 "pe": "John Wolfe",
@@ -6199,7 +6157,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"dave@rtmec.com",
+"david.piluski@rtmec.com",
 "john.wolfe@rtmec.com",
 "andrew.gustafson@rtmec.com"
 ]
@@ -6316,8 +6274,8 @@ export const SEED_TRACKER = [
 "client": "PBS DESIGN",
 "pm": "",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
-"pe": "Alex Babusci and Hope Huenecke",
+"me": "Alex Babusci\nHope Huenecke",
+"pe": "Alex Babusci\nHope Huenecke",
 "ee": "",
 "fp": "James Barnickel",
 "statusNotes": "PERMIT",
@@ -6342,7 +6300,7 @@ export const SEED_TRACKER = [
 "client": "RWE DESIGN BUILD",
 "pm": "Alex Babusci",
 "ml": "",
-"me": "Alex Babusci and Hope Huenecke",
+"me": "Alex Babusci\nHope Huenecke",
 "pe": "Alex Babusci",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
@@ -6381,7 +6339,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"jess.i@rtmec.com",
 "alex.babusci@rtmec.com"
 ]
 },
@@ -6394,8 +6351,8 @@ export const SEED_TRACKER = [
 "client": "NWS ARCHITECTS",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "John Wolfe and TYLER",
-"pe": "John Wolfe and TYLER",
+"me": "John Wolfe\nTYLER",
+"pe": "John Wolfe\nTYLER",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "PERMIT SET",
@@ -6408,7 +6365,6 @@ export const SEED_TRACKER = [
 "emails": [
 "andrew.gustafson@rtmec.com",
 "john.wolfe@rtmec.com",
-"tyler@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
 },
@@ -6434,7 +6390,6 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "john.wolfe@rtmec.com",
-"ryan.m@rtmec.com",
 "andrew.gustafson@rtmec.com",
 "james.barnickel@rtmec.com"
 ]
@@ -6536,8 +6491,7 @@ export const SEED_TRACKER = [
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
 "andrew.gustafson@rtmec.com",
-"john.wolfe@rtmec.com",
-"ryan.m@rtmec.com"
+"john.wolfe@rtmec.com"
 ]
 },
 {
@@ -6549,8 +6503,8 @@ export const SEED_TRACKER = [
 "client": "NWS ARCHITECTS",
 "pm": "Andrew Gustafson",
 "ml": "",
-"me": "John Wolfe and Claire Palmer",
-"pe": "John Wolfe and Claire Palmer",
+"me": "John Wolfe\nClaire Palmer",
+"pe": "John Wolfe\nClaire Palmer",
 "ee": "Andrew Gustafson",
 "fp": "James Barnickel",
 "statusNotes": "PERMIT SET",
@@ -6664,8 +6618,7 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"alex.babusci@rtmec.com",
-"ryan.swims@rtmec.com"
+"alex.babusci@rtmec.com"
 ]
 },
 {
@@ -6689,7 +6642,6 @@ export const SEED_TRACKER = [
 "stamp": "",
 "stage": "CONSTRUCTION ADMINISTRATION",
 "emails": [
-"dale@rtmec.com",
 "andrew.gustafson@rtmec.com"
 ]
 }

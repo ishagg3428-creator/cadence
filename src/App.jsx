@@ -6,7 +6,7 @@ import {
   LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
-import { SEED_TRACKER } from "./trackerData.js";
+import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 
 /* ================================================================ *
  *  Cadence — dark team dashboard
@@ -2294,7 +2294,7 @@ const CALKEY = "cadence:caldnotes:v1";
 function loadCalNotes() { try { const v = localStorage.getItem(CALKEY); if (v) return JSON.parse(v); } catch (e) {} return {}; }
 function saveCalNotes(n) { try { localStorage.setItem(CALKEY, JSON.stringify(n)); } catch (e) {} }
 /* ---------------- Tracker (Excel-style sheet) ---------------- */
-const TRACKER_KEY = "cadence:tracker:v1";
+const TRACKER_KEY = "cadence:tracker:v2";
 function loadTracker() { try { const v = localStorage.getItem(TRACKER_KEY); if (v) { const p = JSON.parse(v); return Array.isArray(p) ? { rows: p } : p; } } catch (e) {} return null; }
 function saveTracker(d) { try { localStorage.setItem(TRACKER_KEY, JSON.stringify(d)); } catch (e) {} }
 const TRACKER_BLOCK = new Set(["SEATTLE", "DALLAS", "IOWA", "OTHERS", "COM-1"]);
@@ -2306,12 +2306,26 @@ const trackerEmailFor = (name) => {
 };
 const rowEmails = (r) => {
   const out = [];
-  ["pm", "ml", "me", "pe", "ee", "fp"].forEach(k => String(r[k] || "").split(" and ").forEach(part => {
-    const nm = part.trim(); if (!nm || TRACKER_BLOCK.has(nm.toUpperCase())) return;
-    const e = trackerEmailFor(nm); if (e && !out.includes(e)) out.push(e);
+  ["pm", "ml", "me", "pe", "ee", "fp"].forEach(k => String(r[k] || "").split(/\n| and /).forEach(part => {
+    const nm = part.trim(); if (!nm) return;
+    const e = EMAIL_DIR[nm.toLowerCase()]; if (e && !out.includes(e)) out.push(e);
   }));
   return out;
 };
+function RoleCell({ value, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const names = String(value || "").split(/\n| and /).map(s => s.trim()).filter(Boolean);
+  if (editing) {
+    return <textarea className="trk-role-edit" autoFocus rows={Math.max(1, names.length)} defaultValue={names.join("\n")}
+      onBlur={e => { setEditing(false); onSave(e.target.value.split(/\n/).map(s => s.trim()).filter(Boolean).join("\n")); }} />;
+  }
+  return (
+    <div className="trk-role" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
+      {names.length === 0 ? <span style={{ color: "#b9c1cd", paddingLeft: 8 }}>—</span> :
+        names.map((n, i) => { const e = EMAIL_DIR[n.toLowerCase()]; return <div key={i}>{e ? <a href={"mailto:" + e} onClick={ev => ev.stopPropagation()}>{n}</a> : <span>{n}</span>}</div>; })}
+    </div>
+  );
+}
 const TRACKER_COLS = [
   { key: "projectName", label: "Project Name", w: 250, sticky: true },
   { key: "rowNumber", label: "Row #", w: 60 },
@@ -2413,7 +2427,11 @@ function TrackerView({ ctx }) {
         <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:5px 8px;outline:none;}
 .trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}
 .trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
-.trk-gut{cursor:grab;}`}</style>
+.trk-gut{cursor:grab;}
+.trk-role{padding:4px 8px;line-height:1.55;cursor:default;min-height:26px;}
+.trk-role a{color:#2563c9;text-decoration:none;}
+.trk-role a:hover{text-decoration:underline;}
+.trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
         <div style={{ overflow: "auto", maxHeight: "72vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
             <thead>
@@ -2443,9 +2461,13 @@ function TrackerView({ ctx }) {
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }} title="Drag to reorder"
                     style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: "#f3f5f9", color: "#6b7a92", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
-                  {cols.map(c => (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "#fff" } : {}) }}>
-                      {c.key === "stage" ? (
+                  {cols.map(c => {
+                    const isRole = ROLE_KEYS.includes(c.key);
+                    return (
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "#fff" } : {}) }}>
+                      {isRole ? (
+                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} />
+                      ) : c.key === "stage" ? (
                         <select className="trk-status" value={r.stage || ""} onChange={e => setStatus(r._id, e.target.value)}
                           style={{ color: r.stage ? statusColor(r.stage) : "#9aa6b6", background: r.stage ? statusColor(r.stage) + "1f" : "transparent" }}>
                           <option value="">—</option>
@@ -2457,7 +2479,8 @@ function TrackerView({ ctx }) {
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
                     </td>
-                  ))}
+                    );
+                  })}
                   <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64 }}>
                     <button title={em.length ? `Email team (${em.length})` : "No team emails"} disabled={!em.length}
                       onClick={() => emailTeam(r)}
@@ -2477,7 +2500,7 @@ function TrackerView({ ctx }) {
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown (➕ adds a new status) · click a cell to edit · changes save automatically.</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Names link to email (click to send); double-click a role cell to edit (one name per line) · drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown.</div>
       </div>
     </>
   );
