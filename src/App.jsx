@@ -2454,7 +2454,7 @@ function TrackerView({ ctx }) {
       <div className="head">
         <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
       </div>
-      <div className="panel" style={{ padding: 12 }}>
+      <div className="panel" style={{ padding: 12, width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)" }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
             <Search size={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
@@ -2481,7 +2481,7 @@ function TrackerView({ ctx }) {
 .trk-role a{color:#2563c9;text-decoration:none;}
 .trk-role a:hover{text-decoration:underline;}
 .trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
-        <div style={{ overflow: "auto", maxHeight: "72vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
+        <div style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
             <thead>
               <tr>
