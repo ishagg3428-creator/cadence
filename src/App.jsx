@@ -2436,6 +2436,13 @@ function TrackerView({ ctx }) {
   const addCol = () => { const label = window.prompt("New column name:"); if (!label || !label.trim()) return; setCols(cs => [...cs, { key: "c_" + uid(), label: label.trim(), w: 150 }]); };
   const delCol = (key) => { if (!window.confirm("Delete this column?")) return; setCols(cs => cs.filter(c => c.key !== key)); };
   const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
+  const startResize = (e, key, startW) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX; let raf = 0, latest = startW;
+    const onMove = (ev) => { latest = Math.max(50, startW + (ev.clientX - startX)); if (!raf) raf = requestAnimationFrame(() => { raf = 0; setCols(cs => cs.map(c => c.key === key ? { ...c, w: latest } : c)); }); };
+    const onUp = () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); if (raf) cancelAnimationFrame(raf); setCols(cs => cs.map(c => c.key === key ? { ...c, w: latest } : c)); };
+    window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+  };
   const emailTeam = (row) => {
     const em = rowEmails(row);
     if (!em.length) return;
@@ -2488,12 +2495,13 @@ function TrackerView({ ctx }) {
                 <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "#e3e8ef" }}></th>
                 {cols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: GUT, zIndex: 5 } : {}) }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
                       <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === cols.length - 1} style={colBtn}>›</button>
                       <button title="Delete column" onClick={() => delCol(c.key)} style={{ ...colBtn, color: "#c0392b" }}>×</button>
                     </div>
+                    <div onMouseDown={e => startResize(e, c.key, c.w)} title="Drag to resize column" style={{ position: "absolute", top: 0, right: 0, width: 6, height: "100%", cursor: "col-resize", userSelect: "none" }} />
                   </th>
                 ))}
                 <th style={{ ...headc, width: 64, minWidth: 64 }}>Email</th>
