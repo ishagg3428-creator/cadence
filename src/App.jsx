@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
+import { SEED_SHEETS } from "./sheetsData.js";
 import { apiLoad, apiSave } from "./trackerApi.js";
 
 /* ================================================================ *
@@ -2348,63 +2349,65 @@ const TRACKER_COLS = [
   { key: "stamp", label: "Stamp", w: 110 },
   { key: "stage", label: "Stage", w: 170 },
 ];
+function loadSheets() {
+  const d = loadTracker();
+  if (!d) return null;
+  if (d.sheets) return d.sheets;
+  if (d.rows) return [{ id: "com1", name: "COM-1", cols: (d.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber"), statuses: d.statuses || [], rows: d.rows }, ...SEED_SHEETS.filter(s => s.name !== "COM-1")];
+  return null;
+}
 function TrackerView({ ctx }) {
-  const [data, setData] = useState(() => {
-    const s = loadTracker();
-    const rs = (s && s.rows) || SEED_TRACKER;
-    return rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
-  });
-  const [cols, setCols] = useState(() => { const s = loadTracker(); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
-  const [statuses, setStatuses] = useState(() => { const s = loadTracker(); if (s && s.statuses) return s.statuses; const rs = (s && s.rows) || SEED_TRACKER; return Array.from(new Set(rs.map(r => r.stage).filter(Boolean))); });
+  const [sheets, setSheets] = useState(() => loadSheets() || SEED_SHEETS);
+  const [active, setActive] = useState(0);
+  const sheet = sheets[Math.min(active, sheets.length - 1)] || { rows: [], cols: [], statuses: [] };
+  const data = sheet.rows, cols = sheet.cols, statuses = sheet.statuses;
+  const patchSheet = (fn) => setSheets(ss => ss.map((s, i) => i === active ? { ...s, ...fn(s) } : s));
+  const setData = (v) => patchSheet(s => ({ rows: typeof v === "function" ? v(s.rows) : v }));
+  const setCols = (v) => patchSheet(s => ({ cols: typeof v === "function" ? v(s.cols) : v }));
+  const setStatuses = (v) => patchSheet(s => ({ statuses: typeof v === "function" ? v(s.statuses) : v }));
+  const addSheet = () => { const name = window.prompt("New sheet name:"); if (!name || !name.trim()) return; setSheets(ss => [...ss, { id: "s" + uid(), name: name.trim(), cols: [{ key: "projectName", label: "Project Name", w: 260, sticky: true }, { key: "stage", label: "Stage", w: 170 }], statuses: [], rows: [] }]); setActive(sheets.length); };
+  const switchSheet = (i) => { setActive(i); setQ(""); setStage("all"); setPerson("all"); };
   const apiOk = useRef(false);
   const curV = useRef(0);
   const lastSave = useRef(0);
   const applyingRemote = useRef(false);
-  const buildDoc = () => ({ rows: data.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses });
-  // Load from the shared DB on open, then poll for others' changes (near real-time).
+  const withIds = (sh) => sh.map(s => ({ ...s, rows: (s.rows || []).map((r, i) => r._id ? r : { ...r, _id: (s.id || "s") + i }) }));
+  const docToSheets = (doc) => {
+    if (!doc) return null;
+    if (doc.sheets) return doc.sheets;
+    if (doc.rows) { const com = { id: "com1", name: "COM-1", cols: (doc.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber"), statuses: doc.statuses || [], rows: doc.rows }; return [com, ...SEED_SHEETS.filter(s => s.name !== "COM-1")]; }
+    return null;
+  };
+  const buildDoc = () => ({ sheets });
+  // Load all sheets from the shared DB on open, then poll for others' changes.
   useEffect(() => {
     let timer, cancelled = false;
     (async () => {
       try {
         const doc = await apiLoad();
         apiOk.current = true;
-        if (doc && doc.rows) {
-          applyingRemote.current = true;
-          setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
-          if (doc.cols) setCols(doc.cols);
-          if (doc.statuses) setStatuses(doc.statuses);
-          curV.current = doc.v || 0;
-        } else {
-          const res = await apiSave(buildDoc()); if (res && res.v) curV.current = res.v;
-        }
+        const sh = docToSheets(doc);
+        if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = (doc && doc.v) || 0; }
+        else { const res = await apiSave({ sheets: SEED_SHEETS }); if (res && res.v) curV.current = res.v; }
       } catch (e) { apiOk.current = false; }
       if (cancelled) return;
       timer = setInterval(async () => {
         if (!apiOk.current) return;
-        try {
-          const doc = await apiLoad();
-          if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) {
-            applyingRemote.current = true;
-            setData((doc.rows || []).map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
-            if (doc.cols) setCols(doc.cols);
-            if (doc.statuses) setStatuses(doc.statuses);
-            curV.current = doc.v;
-          }
-        } catch (e) {}
+        try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
       }, 7000);
     })();
     return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
-    saveTracker({ cols, rows: data, statuses });
+    saveTracker({ sheets });
     if (applyingRemote.current) { applyingRemote.current = false; return; }
     if (!apiOk.current) return;
     const t = setTimeout(async () => {
       try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; } catch (e) {}
     }, 700);
     return () => clearTimeout(t);
-  }, [cols, data, statuses]);
+  }, [sheets]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [person, setPerson] = useState("all");
@@ -2462,6 +2465,12 @@ function TrackerView({ ctx }) {
         <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
       </div>
       <div className="panel" style={{ padding: 12, width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)" }}>
+        <div style={{ display: "flex", gap: 4, marginBottom: 10, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid var(--line)", paddingBottom: 2 }}>
+          {sheets.map((s, i) => (
+            <button key={s.id || i} onClick={() => switchSheet(i)} style={{ border: "1px solid var(--line2)", background: i === active ? "var(--primary)" : "var(--panel2)", color: i === active ? "#fff" : "var(--ink)", borderRadius: "9px 9px 0 0", padding: "7px 14px", fontFamily: "Outfit", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{s.name}</button>
+          ))}
+          <button onClick={addSheet} title="Add a sheet" style={{ border: "1px dashed var(--line2)", background: "transparent", color: "var(--muted)", borderRadius: 9, padding: "7px 12px", cursor: "pointer", fontWeight: 700 }}>+ Sheet</button>
+        </div>
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
             <Search size={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
