@@ -2361,6 +2361,8 @@ function TrackerView({ ctx }) {
   const [active, setActive] = useState(0);
   const sheet = sheets[Math.min(active, sheets.length - 1)] || { rows: [], cols: [], statuses: [] };
   const data = sheet.rows, cols = sheet.cols, statuses = sheet.statuses;
+  const visCols = cols.filter(c => !c.hidden);
+  const toggleCol = (key) => setCols(cs => cs.map(c => c.key === key ? { ...c, hidden: !c.hidden } : c));
   const patchSheet = (fn) => setSheets(ss => ss.map((s, i) => i === active ? { ...s, ...fn(s) } : s));
   const setData = (v) => patchSheet(s => ({ rows: typeof v === "function" ? v(s.rows) : v }));
   const setCols = (v) => patchSheet(s => ({ cols: typeof v === "function" ? v(s.cols) : v }));
@@ -2413,6 +2415,8 @@ function TrackerView({ ctx }) {
   const [person, setPerson] = useState("all");
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
+  const [colMenu, setColMenu] = useState(false);
+  const [selRow, setSelRow] = useState(null);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp"];
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
@@ -2437,7 +2441,7 @@ function TrackerView({ ctx }) {
     const c = [...ds]; [c[a], c[b]] = [c[b], c[a]]; return c;
   });
   const addCol = () => { const label = window.prompt("New column name:"); if (!label || !label.trim()) return; setCols(cs => [...cs, { key: "c_" + uid(), label: label.trim(), w: 150 }]); };
-  const delCol = (key) => { if (!window.confirm("Delete this column?")) return; setCols(cs => cs.filter(c => c.key !== key)); };
+  const delCol = (key) => { const c = cols.find(x => x.key === key); if (!window.confirm(`Delete column "${c ? c.label : ""}" from this sheet? This can't be undone.`)) return; setCols(cs => cs.filter(c => c.key !== key)); };
   const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const startResize = (e, key, startW) => {
     e.preventDefault(); e.stopPropagation();
@@ -2488,6 +2492,19 @@ function TrackerView({ ctx }) {
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          <div style={{ position: "relative" }}>
+            <button className="btn btn-sm" onClick={() => setColMenu(o => !o)}><Settings size={14} />Columns</button>
+            {colMenu && (
+              <div style={{ position: "absolute", right: 0, top: 38, zIndex: 60, background: "var(--panel2)", border: "1px solid var(--line2)", borderRadius: 12, padding: 8, width: 230, maxHeight: 340, overflow: "auto", boxShadow: "0 16px 40px rgba(0,0,0,.4)" }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", padding: "4px 8px", textTransform: "uppercase", letterSpacing: ".5px" }}>Show columns</div>
+                {cols.map(c => (
+                  <label key={c.key} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 8px", fontSize: 13, cursor: "pointer", borderRadius: 8 }}>
+                    <input type="checkbox" checked={!c.hidden} onChange={() => toggleCol(c.key)} />{c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:5px 8px;outline:none;}
 .trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}
@@ -2502,14 +2519,14 @@ function TrackerView({ ctx }) {
             <thead>
               <tr>
                 <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "#e3e8ef" }}></th>
-                {cols.map((c, ci) => (
+                {visCols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: GUT, zIndex: 5 } : {}) }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 12 }}>
                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
-                      <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === cols.length - 1} style={colBtn}>›</button>
-                      <button title="Delete column" onClick={() => delCol(c.key)} style={{ ...colBtn, color: "#c0392b" }}>×</button>
+                      <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === visCols.length - 1} style={colBtn}>›</button>
                     </div>
+                    <button title="Delete column" onClick={() => delCol(c.key)} style={{ position: "absolute", top: 1, right: 8, border: "none", background: "transparent", color: "#caa", fontSize: 11, lineHeight: 1, cursor: "pointer", padding: "1px 2px" }}>×</button>
                     <div onMouseDown={e => startResize(e, c.key, c.w)} title="Drag to resize column" style={{ position: "absolute", top: 0, right: 0, width: 6, height: "100%", cursor: "col-resize", userSelect: "none" }} />
                   </th>
                 ))}
@@ -2520,17 +2537,20 @@ function TrackerView({ ctx }) {
             <tbody>
               {rows.map((r, ri) => {
                 const em = rowEmails(r);
+                const isSel = selRow === r._id;
+                const hl = "#fff3bf";
                 return (
                 <tr key={r._id || ri}
                   onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
-                  style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
-                  <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }} title="Drag to reorder"
-                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: "#f3f5f9", color: "#6b7a92", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
-                  {cols.map(c => {
+                  style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: isSel ? "inset 0 0 0 2px #f0b400" : (overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none") }}>
+                  <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title="Click to highlight · drag to reorder"
+                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: isSel ? hl : "#f3f5f9", color: "#6b7a92", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
+                  {visCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     return (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "#fff" } : {}) }}>
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, background: isSel ? hl : "#fff", ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1 } : {}) }}>
                       {isRole ? (
                         <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} />
                       ) : c.key === "stage" ? (
@@ -2547,14 +2567,14 @@ function TrackerView({ ctx }) {
                     </td>
                     );
                   })}
-                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64 }}>
+                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64, background: isSel ? hl : "#fff" }}>
                     <button title={em.length ? `Email team (${em.length})` : "No team emails"} disabled={!em.length}
                       onClick={() => emailTeam(r)}
                       style={{ border: "none", background: "transparent", cursor: em.length ? "pointer" : "not-allowed", color: em.length ? "#2563c9" : "#c2c8d0", display: "grid", placeItems: "center", width: "100%" }}>
                       <Mail size={15} />
                     </button>
                   </td>
-                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px" }}>
+                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px", background: isSel ? hl : "#fff" }}>
                     <button title="Move up" onClick={() => moveRow(r._id, -1)} style={actBtn}><ChevronUp size={15} /></button>
                     <button title="Move down" onClick={() => moveRow(r._id, 1)} style={actBtn}><ChevronDown size={15} /></button>
                     <button title="Delete row" onClick={() => { if (window.confirm("Delete this row?")) delRow(r._id); }} style={{ ...actBtn, color: "#c0392b" }}><Trash2 size={14} /></button>
@@ -2562,11 +2582,11 @@ function TrackerView({ ctx }) {
                 </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={visCols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Names link to email (click to send); double-click a role cell to edit (one name per line) · drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown.</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click a row number to highlight it (meeting tracking) · drag it to reorder · double-click a role cell to edit · "Columns" shows/hides fields · names link to email.</div>
       </div>
     </>
   );
