@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
+import { apiLoad, apiSave } from "./trackerApi.js";
 
 /* ================================================================ *
  *  Cadence — dark team dashboard
@@ -2355,7 +2356,55 @@ function TrackerView({ ctx }) {
   });
   const [cols, setCols] = useState(() => { const s = loadTracker(); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
   const [statuses, setStatuses] = useState(() => { const s = loadTracker(); if (s && s.statuses) return s.statuses; const rs = (s && s.rows) || SEED_TRACKER; return Array.from(new Set(rs.map(r => r.stage).filter(Boolean))); });
-  useEffect(() => { saveTracker({ cols, rows: data, statuses }); }, [cols, data, statuses]);
+  const apiOk = useRef(false);
+  const curV = useRef(0);
+  const lastSave = useRef(0);
+  const applyingRemote = useRef(false);
+  const buildDoc = () => ({ rows: data.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses });
+  // Load from the shared DB on open, then poll for others' changes (near real-time).
+  useEffect(() => {
+    let timer, cancelled = false;
+    (async () => {
+      try {
+        const doc = await apiLoad();
+        apiOk.current = true;
+        if (doc && doc.rows) {
+          applyingRemote.current = true;
+          setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
+          if (doc.cols) setCols(doc.cols);
+          if (doc.statuses) setStatuses(doc.statuses);
+          curV.current = doc.v || 0;
+        } else {
+          const res = await apiSave(buildDoc()); if (res && res.v) curV.current = res.v;
+        }
+      } catch (e) { apiOk.current = false; }
+      if (cancelled) return;
+      timer = setInterval(async () => {
+        if (!apiOk.current) return;
+        try {
+          const doc = await apiLoad();
+          if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) {
+            applyingRemote.current = true;
+            setData((doc.rows || []).map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
+            if (doc.cols) setCols(doc.cols);
+            if (doc.statuses) setStatuses(doc.statuses);
+            curV.current = doc.v;
+          }
+        } catch (e) {}
+      }, 7000);
+    })();
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, []);
+  // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
+  useEffect(() => {
+    saveTracker({ cols, rows: data, statuses });
+    if (applyingRemote.current) { applyingRemote.current = false; return; }
+    if (!apiOk.current) return;
+    const t = setTimeout(async () => {
+      try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; } catch (e) {}
+    }, 700);
+    return () => clearTimeout(t);
+  }, [cols, data, statuses]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [person, setPerson] = useState("all");
