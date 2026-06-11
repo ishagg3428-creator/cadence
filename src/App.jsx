@@ -2339,14 +2339,16 @@ function TrackerView({ ctx }) {
     const rs = (s && s.rows) || SEED_TRACKER;
     return rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
   });
-  const [cols, setCols] = useState(() => { const s = loadTracker(); return (s && s.cols) || TRACKER_COLS; });
-  useEffect(() => { saveTracker({ cols, rows: data }); }, [cols, data]);
+  const [cols, setCols] = useState(() => { const s = loadTracker(); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
+  const [statuses, setStatuses] = useState(() => { const s = loadTracker(); if (s && s.statuses) return s.statuses; const rs = (s && s.rows) || SEED_TRACKER; return Array.from(new Set(rs.map(r => r.stage).filter(Boolean))); });
+  useEffect(() => { saveTracker({ cols, rows: data, statuses }); }, [cols, data, statuses]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [person, setPerson] = useState("all");
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp"];
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(" and ").map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
-  const stages = ["all", ...Array.from(new Set(data.map(r => r.stage).filter(Boolean)))];
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
   const rows = data.filter(r => {
@@ -2355,9 +2357,13 @@ function TrackerView({ ctx }) {
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
   });
+  const STATUS_PALETTE = ["#E03A3E", "#E8A53C", "#33B36B", "#4FA8E8", "#9A6BF0", "#E0734A", "#2E80C2", "#C56BD6"];
+  const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
-  const addRow = () => setData(ds => { const mx = ds.reduce((m, r) => Math.max(m, Number(r.rowNumber) || 0), 0); return [...ds, { _id: "r" + uid(), rowNumber: String(mx + 1) }]; });
+  const setStatus = (id, val) => { if (val === "__new") { const n = window.prompt("New status name:"); if (!n || !n.trim()) return; const nm = n.trim(); setStatuses(ss => ss.includes(nm) ? ss : [...ss, nm]); update(id, "stage", nm); return; } update(id, "stage", val); };
+  const addRow = () => setData(ds => [{ _id: "r" + uid() }, ...ds]);
   const delRow = (id) => setData(ds => ds.filter(r => r._id !== id));
+  const dropOnRow = (targetId) => { setData(ds => { if (!dragId || dragId === targetId) return ds; const from = ds.findIndex(r => r._id === dragId); const to = ds.findIndex(r => r._id === targetId); if (from < 0 || to < 0) return ds; const c = [...ds]; const [m] = c.splice(from, 1); c.splice(to, 0, m); return c; }); setDragId(null); setOverId(null); };
   const moveRow = (id, dir) => setData(ds => {
     const vis = ds.filter(r => rows.some(x => x._id === r._id));
     const vi = vis.findIndex(r => r._id === id); const tgt = vis[vi + dir]; if (!tgt) return ds;
@@ -2375,6 +2381,7 @@ function TrackerView({ ctx }) {
     u.set("subject", `[${row.projectName}] `);
     window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
   };
+  const GUT = 46;
   const cell = { border: "1px solid #d0d7de", padding: "5px 8px", fontSize: 12.5, color: "#1b2330", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#fff" };
   const headc = { ...cell, background: "#eef2f7", fontWeight: 700, color: "#16243a", position: "sticky", top: 0, zIndex: 3 };
   const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "#5a6b85", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
@@ -2392,7 +2399,8 @@ function TrackerView({ ctx }) {
               style={{ width: "100%", padding: "9px 12px 9px 34px", borderRadius: 10, border: "1px solid var(--line2)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 14, outline: "none" }} />
           </div>
           <select className="btn" value={stage} onChange={e => setStage(e.target.value)}>
-            {stages.map(s => <option key={s} value={s}>{s === "all" ? "All stages" : s}</option>)}
+            <option value="all">All statuses</option>
+            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select className="btn" value={person} onChange={e => setPerson(e.target.value)}>
             {people.map(s => <option key={s} value={s}>{s === "all" ? "All people" : s}</option>)}
@@ -2403,13 +2411,16 @@ function TrackerView({ ctx }) {
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
         </div>
         <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:5px 8px;outline:none;}
-.trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}`}</style>
+.trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}
+.trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
+.trk-gut{cursor:grab;}`}</style>
         <div style={{ overflow: "auto", maxHeight: "72vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
             <thead>
               <tr>
+                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "#e3e8ef" }}></th>
                 {cols.map((c, ci) => (
-                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: 0, zIndex: 5 } : {}) }}>
+                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: GUT, zIndex: 5 } : {}) }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
@@ -2426,10 +2437,22 @@ function TrackerView({ ctx }) {
               {rows.map((r, ri) => {
                 const em = rowEmails(r);
                 return (
-                <tr key={r._id || ri}>
+                <tr key={r._id || ri}
+                  onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
+                  onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
+                  style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
+                  <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }} title="Drag to reorder"
+                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: "#f3f5f9", color: "#6b7a92", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {cols.map(c => (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: c.key === "rowNumber" ? "5px 8px" : "0", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: 0, zIndex: 2 } : {}) }}>
-                      {c.key === "rowNumber" ? r[c.key] : (
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "#fff" } : {}) }}>
+                      {c.key === "stage" ? (
+                        <select className="trk-status" value={r.stage || ""} onChange={e => setStatus(r._id, e.target.value)}
+                          style={{ color: r.stage ? statusColor(r.stage) : "#9aa6b6", background: r.stage ? statusColor(r.stage) + "1f" : "transparent" }}>
+                          <option value="">—</option>
+                          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                          <option value="__new">➕ New status…</option>
+                        </select>
+                      ) : (
                         <input key={r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
@@ -2450,11 +2473,11 @@ function TrackerView({ ctx }) {
                 </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={cols.length + 2} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click a cell to edit · "Row"/"Column" buttons add · header ‹ › and row arrows reorder · × / trash delete · changes save automatically · mail icon emails the team.</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown (➕ adds a new status) · click a cell to edit · changes save automatically.</div>
       </div>
     </>
   );
