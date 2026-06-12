@@ -2,7 +2,9 @@
 // Reads the same tracker doc the website writes, returns a clean array.
 import { neon } from "@neondatabase/serverless";
 
-const sql = neon(process.env.DATABASE_URL);
+// Lazy init — module-scope neon() crashes the function when DATABASE_URL is missing.
+let _sql = null;
+function db() { if (!_sql) _sql = neon(process.env.DATABASE_URL); return _sql; }
 
 const RECOGNIZED = ["Aaron Burch", "Andrew Gustafson", "Byshop Williams", "Claire Palmer",
   "Dan King", "David Piluski", "Gabriel Ferguson", "Habiba Watfa", "Hope Huenecke",
@@ -25,12 +27,13 @@ function teamEmails(r) {
 const FIXED_CC = "john.wolfe@rtmec.com,andrew.gustafson@rtmec.com,madison.huschak@rtmec.com";
 
 export default async function handler(req, res) {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: "DATABASE_URL not configured" });
   // Auth: Power Automate must send header  x-api-key: <RELAY_API_KEY>
   const key = process.env.RELAY_API_KEY;
   if (!key) return res.status(500).json({ error: "RELAY_API_KEY not configured" });
   if (req.headers["x-api-key"] !== key) return res.status(401).json({ error: "unauthorized" });
   try {
-    const rows = await sql`select doc from tracker_doc where id = 1`;
+    const rows = await db()`select doc from tracker_doc where id = 1`;
     const doc = rows.length ? rows[0].doc : {};
     let sheets = doc.sheets;
     if (!sheets && doc.rows) sheets = [{ name: "COM-1", rows: doc.rows }];

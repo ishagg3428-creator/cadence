@@ -1,10 +1,13 @@
 // Vercel serverless function: read/write the whole tracker as one JSON doc in Neon.
 import { neon } from "@neondatabase/serverless";
 
-const sql = neon(process.env.DATABASE_URL);
+// Lazy init — calling neon() at module scope crashes the whole function
+// (FUNCTION_INVOCATION_FAILED) when DATABASE_URL is missing, hiding the real error.
+let _sql = null;
+function db() { if (!_sql) _sql = neon(process.env.DATABASE_URL); return _sql; }
 
 async function ensureTable() {
-  await sql`create table if not exists tracker_doc (
+  await db()`create table if not exists tracker_doc (
     id int primary key,
     doc jsonb not null,
     v bigint not null default 0
@@ -12,12 +15,14 @@ async function ensureTable() {
 }
 
 export default async function handler(req, res) {
+  if (!process.env.DATABASE_URL) return res.status(503).json({ error: "DATABASE_URL not configured" });
   // Auth: the website sends header  x-app-key: <APP_KEY>
   const key = process.env.APP_KEY;
   if (!key) return res.status(500).json({ error: "APP_KEY not configured" });
   if (req.headers["x-app-key"] !== key) return res.status(401).json({ error: "unauthorized" });
   try {
     await ensureTable();
+    const sql = db();
 
     if (req.method === "GET") {
       const rows = await sql`select doc, v from tracker_doc where id = 1`;
