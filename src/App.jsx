@@ -1076,7 +1076,7 @@ function GanttView({ ctx }) {
   const scrollRef = useRef(null);
   const trackRef = useRef(null);
   const [sx, setSx] = useState({ l: 0, w: 1, c: 1 });
-  const syncScroll = () => { const el = scrollRef.current; if (el) setSx({ l: el.scrollLeft, w: el.scrollWidth, c: el.clientWidth }); };
+  const syncScroll = () => { const el = scrollRef.current; if (el) setSx(s => (s.l === el.scrollLeft && s.w === el.scrollWidth && s.c === el.clientWidth) ? s : { l: el.scrollLeft, w: el.scrollWidth, c: el.clientWidth }); };
   useEffect(() => { syncScroll(); });
   const dragBar = (clientX) => { const t = trackRef.current, el = scrollRef.current; if (!t || !el) return; const r = t.getBoundingClientRect(); const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width)); el.scrollLeft = ratio * (el.scrollWidth - el.clientWidth); };
   const startBarDrag = (e) => { e.preventDefault(); dragBar(e.clientX); const move = (ev) => dragBar(ev.clientX); const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); }; window.addEventListener("mousemove", move); window.addEventListener("mouseup", up); };
