@@ -5,12 +5,12 @@ Cadence is a dark-themed React team dashboard for RTM Engineering Consultants (r
 It is a single-page app built with React + Vite, deployed on Vercel, with a Neon PostgreSQL database for shared tracker data.
 
 **GitHub repo:** https://github.com/ishagg3428-creator/cadence
-**Local folder:** `/Users/eshaan/Desktop/cadence`
+**Local folder:** `/Users/eshaan/Developer/cadence`
 
 > **Note:** This is a *shared* repo. The owner is `ishagg3428-creator`; Eshaan (`emirchandani432`)
 > is a collaborator with **push (editor)** access — not admin. Push changes normally, but there's
 > no admin control over repo settings, branch protection, or Vercel from this account.
-> (Eshaan also has a separate personal copy at `/Users/eshaan/Desktop/Cadence-Eshaan`, which is
+> (Eshaan also has a separate personal copy at `/Users/eshaan/Developer/Cadence-Eshaan`, which is
 > further along — e.g. its Mail tab is removed and its brand tabs auto-filter. Keep the two distinct.)
 
 ---
