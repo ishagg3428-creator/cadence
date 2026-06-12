@@ -2554,7 +2554,7 @@ function TrackerView({ ctx }) {
 
   const [data, setData] = useState(() => {
     const s = loadTracker(activeSheet);
-    const rs = (s && s.rows) || (activeSheet === "main" ? SEED_TRACKER : []);
+    const rs = (s && s.rows && s.rows.length) ? s.rows : (activeSheet === "main" ? SEED_TRACKER : []);
     return rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
   });
   const [cols, setCols] = useState(() => { const s = loadTracker(activeSheet); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
@@ -2574,14 +2574,19 @@ function TrackerView({ ctx }) {
       try {
         const doc = await apiLoad();
         apiOk.current = true;
-        if (doc && doc.rows) {
+        if (doc && doc.rows && doc.rows.length) {
           applyingRemote.current = true;
           setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
           if (doc.cols) setCols(doc.cols);
           if (doc.statuses) setStatuses(doc.statuses);
           curV.current = doc.v || 0;
         } else {
-          const res = await apiSave(buildDoc()); if (res && res.v) curV.current = res.v;
+          // Shared DB is empty (e.g. it was wiped) — restore the full project list from
+          // the seed and push it back so the whole team gets the projects again.
+          const seeded = SEED_TRACKER.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
+          applyingRemote.current = true;
+          setData(seeded);
+          try { const res = await apiSave({ rows: seeded.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses }); if (res && res.v) curV.current = res.v; } catch (e) {}
         }
       } catch (e) { apiOk.current = false; }
       if (cancelled) return;
@@ -2589,9 +2594,9 @@ function TrackerView({ ctx }) {
         if (!apiOk.current) return;
         try {
           const doc = await apiLoad();
-          if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) {
+          if (doc && doc.rows && doc.rows.length && doc.v > curV.current && Date.now() - lastSave.current > 2500) {
             applyingRemote.current = true;
-            setData((doc.rows || []).map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
+            setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
             if (doc.cols) setCols(doc.cols);
             if (doc.statuses) setStatuses(doc.statuses);
             curV.current = doc.v;
