@@ -6,14 +6,13 @@ import {
   CheckCircle2, Circle, Clock, FolderOpen, AlertCircle, LogOut, Send, ShieldCheck,
   LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table
 } from "lucide-react";
-import MailView from "./MailView.jsx";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { apiLoad, apiSave } from "./trackerApi.js";
 
 /* ================================================================ *
  *  Cadence — dark team dashboard
- *  Home · Gantt · Board · Calendar · Team · Outlook email
+ *  Home · Gantt · Board · Calendar · Team
  * ================================================================ */
 
 const css = `
@@ -318,7 +317,6 @@ const NAV = [
   { id: "alerts", label: "Inbox", Icon: Bell },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
   { id: "team", label: "Team", Icon: Users },
-  { id: "mail", label: "Mail", Icon: Mail },
 ];
 
 /* ---------- storage (browser localStorage) ---------- */
@@ -531,7 +529,6 @@ export default function App() {
         {view === "alerts" && <NotificationsView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
         {view === "team" && <TeamView ctx={ctx} />}
-        {view === "mail" && <MailView />}
       </div>
 
       {taskModal && (
@@ -801,12 +798,12 @@ function buildNotifs(gd) {
 function gSample() {
   const t = todayISO();
   return { projects: [
-    { id: uid(), name: "Clovers", color: "#E03A3E", due: addDays(t, 16), start: addDays(t, -12), myRole: "owner", code: "CLV24", codeCadence: "month", cascade: false, groups: [
+    { id: uid(), name: "Clovers", color: "#E03A3E", due: addDays(t, 16), start: addDays(t, -12), myRole: "owner", viewerCode: "CLV24", editorCode: "CLVED", codeCadence: "month", cascade: false, groups: [
       { id: uid(), name: "Survey", color: "#4FA8E8", desc: "Topographic survey & site boundaries.", start: addDays(t, -12), end: addDays(t, -6), members: [{ id: uid(), name: "Maya Chen", color: "#4FA8E8", done: true }, { id: uid(), name: "Sara Lopez", color: "#9A6BF0", done: true }] },
       { id: uid(), name: "Civil", color: "#E8A53C", desc: "Grading, drainage, foundation prep.", start: addDays(t, -5), end: addDays(t, 2), members: [{ id: uid(), name: "Devon Brooks", color: "#2E80C2", done: false }, { id: uid(), name: "Maya Chen", color: "#4FA8E8", done: true }] },
       { id: uid(), name: "Electrical", color: "#5FD18C", desc: "Rough-in and panel install.", start: addDays(t, 3), end: addDays(t, 9), members: [{ id: uid(), name: "Sara Lopez", color: "#9A6BF0", done: false }] },
     ]},
-    { id: uid(), name: "Walmart Remodel", color: "#4FA8E8", due: addDays(t, 78), start: addDays(t, 6), myRole: "editor", code: "WMR78", codeCadence: "month", cascade: false, groups: [
+    { id: uid(), name: "Walmart Remodel", color: "#4FA8E8", due: addDays(t, 78), start: addDays(t, 6), myRole: "editor", viewerCode: "WMR78", editorCode: "WMRED", codeCadence: "month", cascade: false, groups: [
       { id: uid(), name: "Demo", color: "#E0734A", desc: "Interior demolition.", start: addDays(t, 6), end: addDays(t, 16), members: [{ id: uid(), name: "Devon Brooks", color: "#2E80C2", done: false }] },
       { id: uid(), name: "Framing", color: "#C56BD6", desc: "Steel stud framing.", start: addDays(t, 17), end: addDays(t, 38), members: [{ id: uid(), name: "Maya Chen", color: "#4FA8E8", done: false }] },
     ]},
@@ -894,6 +891,10 @@ function remaining(dueISO, nowMs) {
 }
 const ROLE_C = { owner: "#E03A3E", editor: "#4FA8E8", viewer: "#6E83A2" };
 const genCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
+// Two distinct invite codes per project: viewers join read-only, editors can edit.
+const genCodes = () => { const viewerCode = genCode(); let editorCode = genCode(); while (editorCode === viewerCode) editorCode = genCode(); return { viewerCode, editorCode }; };
+const viewerCodeOf = (p) => (p && (p.viewerCode || p.code)) || "";
+const editorCodeOf = (p) => (p && p.editorCode) || "";
 const BG_PRESETS = [
   { name: "None", css: "" },
   { name: "Red", css: "rgba(224,58,62,.30)" },
@@ -949,6 +950,8 @@ function GanttView({ ctx }) {
   const [joinCode, setJoinCode] = useState("");
   const [joinErr, setJoinErr] = useState("");
   const [joined, setJoined] = useState(null);
+  const [codeRole, setCodeRole] = useState("viewer"); // which invite code the panel shows; viewer by default
+  const [sortBy, setSortBy] = useState("created"); // project sort: created (oldest first) | name | modified
   const [presOpen, setPresOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
   const [purgeArm, setPurgeArm] = useState(null);
@@ -962,12 +965,28 @@ function GanttView({ ctx }) {
   const [cascPick, setCascPick] = useState(null);
   const [cascSel, setCascSel] = useState([]);
   useEffect(() => { setAdjOpen(false); setAdjDelta(0); setAdjMode("none"); setAdjSel([]); setMvStart(false); setMvEnd(true); }, [edit && edit.gid]);
-  const regenCode = (pid) => patchProject(pid, { code: genCode() });
+  const regenCode = (pid, role) => setProjects(ps => ps.map(p => {
+    if (p.id !== pid) return p;
+    const other = role === "editor" ? viewerCodeOf(p) : editorCodeOf(p);
+    let c = genCode(); while (c === other) c = genCode();
+    return { ...p, [role === "editor" ? "editorCode" : "viewerCode"]: c };
+  }));
+  // Backfill both invite codes on older projects that only have a single legacy code.
+  useEffect(() => {
+    if (!edit || !edit.pid) return;
+    const p = gd.projects.find(x => x.id === edit.pid);
+    if (p && (!p.viewerCode || !p.editorCode)) {
+      const viewerCode = p.viewerCode || p.code || genCode();
+      let editorCode = p.editorCode || genCode();
+      while (editorCode === viewerCode) editorCode = genCode();
+      patchProject(p.id, { viewerCode, editorCode });
+    }
+  }, [edit && edit.pid]);
   const completeProject = (pid, val) => patchProject(pid, { done: val });
   const softDelete = (pid) => patchProject(pid, { deleted: true, deletedAt: Date.now() });
   const restoreProject = (pid) => patchProject(pid, { deleted: false, deletedAt: null });
   const purgeProject = (pid) => setProjects(ps => ps.filter(p => p.id !== pid));
-  const tryJoin = () => { const c = joinCode.trim().toUpperCase(); const hit = gd.projects.find(p => (p.code||"").toUpperCase() === c); if (!c) return; if (hit) { setJoinErr(""); setJoinCode(""); setJoined(hit.name); setTimeout(() => setJoined(null), 2600); bumpOpen(hit.id); setOpenId(hit.id); setWhoFilter("all"); } else { setJoinErr("No project with that code (demo)."); } };
+  const tryJoin = () => { const c = joinCode.trim().toUpperCase(); if (!c) return; let role = null; const hit = gd.projects.find(p => { if (editorCodeOf(p).toUpperCase() === c) { role = "editor"; return true; } if (viewerCodeOf(p).toUpperCase() === c) { role = "viewer"; return true; } return false; }); if (hit) { setJoinErr(""); setJoinCode(""); setJoined({ name: hit.name, role }); setTimeout(() => setJoined(null), 2600); bumpOpen(hit.id); setOpenId(hit.id); setWhoFilter("all"); } else { setJoinErr("No project with that code (demo)."); } };
   const [hoverGid, setHoverGid] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [dragTip, setDragTip] = useState(null);
@@ -1009,9 +1028,9 @@ function GanttView({ ctx }) {
   useEffect(() => { if (!openId) return; const p = gdRef.current.projects.find(x => x.id === openId); if (p && p.invited) setGd(g => ({ ...g, projects: g.projects.map(x => x.id === openId ? { ...x, invited: false } : x) })); }, [openId]);
 
   const setProjects = (fn) => { setHistory(h => [...h.slice(-29), gdRef.current.projects]); setGd(g => ({ ...g, projects: fn(g.projects) })); };
-  const patchProject = (pid, patch) => setProjects(ps => ps.map(p => p.id === pid ? { ...p, ...patch } : p));
-  const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => p.id !== pid ? p : { ...p, groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
-  const addProject = () => { const id = uid(); setProjects(ps => [...ps, { id, name: "New project", color: PALETTE[ps.length % PALETTE.length], due: addDays(todayISO(), 30), start: todayISO(), myRole: "owner", code: genCode(), codeCadence: "month", cascade: false, groups: [] }]); setOpenId(id); setEdit({ pid: id }); };
+  const patchProject = (pid, patch) => setProjects(ps => ps.map(p => p.id === pid ? { ...p, ...patch, updatedAt: Date.now() } : p));
+  const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => p.id !== pid ? p : { ...p, updatedAt: Date.now(), groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
+  const addProject = () => { const id = uid(); const ts = Date.now(); setProjects(ps => [...ps, { id, name: "New project", color: PALETTE[ps.length % PALETTE.length], due: addDays(todayISO(), 30), start: todayISO(), myRole: "owner", ...genCodes(), codeCadence: "month", cascade: false, createdAt: ts, updatedAt: ts, groups: [] }]); setOpenId(id); setEdit({ pid: id }); };
   const delProject = (pid) => { setProjects(ps => ps.filter(p => p.id !== pid)); setEdit(null); setOpenId(null); };
   const addGroup = (pid) => { const id = uid(); const p = gdRef.current.projects.find(x => x.id === pid); const used = new Set((p ? p.groups : []).map(g => g.color)); const color = PALETTE.find(c => !used.has(c)) || PALETTE[(p ? p.groups.length : 0) % PALETTE.length]; setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: [...x.groups, { id, name: "New group", color, desc: "", start: todayISO(), end: addDays(todayISO(), 5), members: [] }] })); setEdit({ pid, gid: id }); };
   const delGroup = (pid, gid) => { const p = gdRef.current.projects.find(x => x.id === pid); let next = { pid }; if (p) { const idx = p.groups.findIndex(g => g.id === gid); const remaining = p.groups.filter(g => g.id !== gid); if (remaining.length) next = { pid, gid: remaining[Math.max(0, idx - 1)].id }; } setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: x.groups.filter(g => g.id !== gid) })); setEdit(next); };
@@ -1061,11 +1080,20 @@ function GanttView({ ctx }) {
           </div>
         </div>
         {joined && <Confetti />}
-        {joined && <div className="toast">🎉 Successfully joined "{joined}"</div>}
+        {joined && <div className="toast">🎉 Successfully joined "{joined.name}" as {joined.role}</div>}
         {gd.projects.filter(p => !p.deleted).length > 0 && (
-          <div style={{ position: "relative", maxWidth: 320, marginBottom: 14 }}>
-            <Search size={15} style={{ position: "absolute", left: 11, top: 10, color: "var(--dim)" }} />
-            <input value={pickSearch} onChange={e => setPickSearch(e.target.value)} placeholder="Search projects…" style={{ width: "100%", paddingLeft: 34, fontFamily: "Outfit", fontSize: 13.5, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 11, padding: "9px 12px 9px 34px", background: "var(--panel)", outline: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 320 }}>
+              <Search size={15} style={{ position: "absolute", left: 11, top: 10, color: "var(--dim)" }} />
+              <input value={pickSearch} onChange={e => setPickSearch(e.target.value)} placeholder="Search projects…" style={{ width: "100%", paddingLeft: 34, fontFamily: "Outfit", fontSize: 13.5, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 11, padding: "9px 12px 9px 34px", background: "var(--panel)", outline: "none" }} />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--muted)" }}>Sort
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 10, padding: "8px 10px", background: "var(--panel)", outline: "none", cursor: "pointer" }}>
+                <option value="created">Date created</option>
+                <option value="name">Name (A–Z)</option>
+                <option value="modified">Last modified</option>
+              </select>
+            </label>
           </div>
         )}
         {gd.projects.filter(p => !p.deleted).length >= 2 && !pickSearch.trim() && (
@@ -1075,14 +1103,20 @@ function GanttView({ ctx }) {
             <ChevronRight size={18} style={{ marginLeft: "auto", color: "var(--muted)" }} />
           </div>
         )}
-        {(() => { const pickList = gd.projects.filter(p => !p.deleted && (!pickSearch.trim() || p.name.toLowerCase().includes(pickSearch.trim().toLowerCase()))); return (
-          gd.projects.filter(p => !p.deleted).length === 0 ? <div className="empty-sm" style={{ padding: 40 }}>No projects yet — create your first one.</div> :
-          pickList.length === 0 ? <div className="empty-sm" style={{ padding: 30 }}>No projects match "{pickSearch}".</div> :
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: 14 }}>
-            {pickList.map(p => {
-              const rem = remaining(p.due, now);
-              const total = p.groups.length, done = p.groups.filter(g => g.members.length > 0 && g.members.every(m => m.done)).length;
-              return (
+        {(() => {
+          const base = gd.projects.filter(p => !p.deleted && (!pickSearch.trim() || p.name.toLowerCase().includes(pickSearch.trim().toLowerCase())));
+          const order = new Map(gd.projects.map((p, i) => [p.id, i]));
+          const createdVal = (p) => p.createdAt || order.get(p.id) || 0;
+          const updatedVal = (p) => p.updatedAt || p.createdAt || order.get(p.id) || 0;
+          const sortFn = sortBy === "name" ? (a, b) => (a.name || "").localeCompare(b.name || "")
+            : sortBy === "modified" ? (a, b) => updatedVal(b) - updatedVal(a)
+            : (a, b) => createdVal(a) - createdVal(b);
+          const active = base.filter(p => !p.done).sort(sortFn);
+          const completed = base.filter(p => p.done).sort(sortFn);
+          const renderCard = (p) => {
+            const rem = remaining(p.due, now);
+            const total = p.groups.length, done = p.groups.filter(g => g.members.length > 0 && g.members.every(m => m.done)).length;
+            return (
                 <div key={p.id} className="panel" style={{ position: "relative", borderTop: `3px solid ${p.color}`, paddingBottom: 12, ...(p.invited ? { boxShadow: "0 0 0 2px var(--teal)" } : {}) }}>
                   {p.invited && <div style={{ position: "absolute", top: -10, left: 12, zIndex: 4, background: "var(--teal)", color: "#06121e", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99, boxShadow: "0 3px 10px rgba(0,0,0,.3)" }}>Invited! · {p.invitedAs || "editor"}</div>}
                   {p.done && <div style={{ position: "absolute", inset: 0, background: "rgba(51,179,107,.16)", border: "2px solid var(--done)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2, pointerEvents: "none" }}><span style={{ fontFamily: "Fraunces", fontSize: 21, fontWeight: 700, color: "var(--done)", display: "flex", gap: 8, alignItems: "center" }}><CheckCircle2 size={23} />Completed</span></div>}
@@ -1100,10 +1134,27 @@ function GanttView({ ctx }) {
                     <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(p); }} style={{ padding: "9px 13px", color: "#ff8a8c" }} title="Delete project"><X size={19} /></button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ); })()}
+            );
+          };
+          const grid = (list) => <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: 14 }}>{list.map(renderCard)}</div>;
+          return (
+            gd.projects.filter(p => !p.deleted).length === 0 ? <div className="empty-sm" style={{ padding: 40 }}>No projects yet — create your first one.</div> :
+            base.length === 0 ? <div className="empty-sm" style={{ padding: 30 }}>No projects match "{pickSearch}".</div> :
+            <>
+              {active.length > 0 ? grid(active) : <div className="empty-sm" style={{ padding: 24 }}>No active projects — everything's complete. 🎉</div>}
+              {completed.length > 0 && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "26px 0 12px" }}>
+                    <CheckCircle2 size={17} color="var(--done)" />
+                    <span style={{ fontFamily: "Fraunces", fontSize: 16.5, fontWeight: 600, color: "var(--ink)" }}>Completed</span>
+                    <span style={{ fontSize: 12.5, color: "var(--dim)", fontWeight: 600 }}>{completed.length}</span>
+                  </div>
+                  {grid(completed)}
+                </>
+              )}
+            </>
+          );
+        })()}
         {confirmDel && (
           <div className="ov" onClick={() => setConfirmDel(null)}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 390 }}>
@@ -1405,7 +1456,7 @@ ${rows}</div></div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {canOpen && proj.codeCadence !== "off" && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--teal)", background: "rgba(79,168,232,.14)", border: "1px solid #4FA8E855", borderRadius: 8, padding: "4px 9px", letterSpacing: "1px" }} title="Invite code (demo)">#{proj.code}</span>}
+              {canOpen && proj.codeCadence !== "off" && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--teal)", background: "rgba(79,168,232,.14)", border: "1px solid #4FA8E855", borderRadius: 8, padding: "4px 9px", letterSpacing: "1px" }} title="Viewer invite code (demo)">#{viewerCodeOf(proj)}</span>}
               <span style={{ fontSize: 12, fontWeight: 700, color: ROLE_C[role], background: ROLE_C[role] + "22", border: `1px solid ${ROLE_C[role]}55`, borderRadius: 99, padding: "5px 12px", textTransform: "capitalize" }}>You're {role}</span>
               {/* demo presence: your avatar, hover for everyone */}
               <div className="pres dotwrap" style={{ position: "relative" }} onMouseEnter={() => setPresOpen(true)} onMouseLeave={() => setPresOpen(false)}>
@@ -1693,10 +1744,16 @@ ${rows}</div></div>
                   {editTarget.p.codeCadence === "off" ? (
                     <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Joining is off — no one can join with a code.</div>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontFamily: "Fraunces", fontSize: 22, fontWeight: 600, letterSpacing: "2px", color: "var(--teal)" }}>{editTarget.p.code}</span>
-                      {isOwner && <button className="btn btn-ghost icon-btn" title="Regenerate" onClick={() => regenCode(editTarget.p.id)}><RefreshCw size={14} /></button>}
-                    </div>
+                    <>
+                      <select className="btn btn-sm" style={{ width: "100%", marginBottom: 8 }} value={codeRole} onChange={e => setCodeRole(e.target.value)}>
+                        <option value="viewer">Viewer code — join read-only</option>
+                        <option value="editor">Editor code — can edit</option>
+                      </select>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontFamily: "Fraunces", fontSize: 22, fontWeight: 600, letterSpacing: "2px", color: "var(--teal)" }}>{(codeRole === "editor" ? editorCodeOf(editTarget.p) : viewerCodeOf(editTarget.p)) || "—"}</span>
+                        {isOwner && <button className="btn btn-ghost icon-btn" title={`Regenerate ${codeRole} code`} onClick={() => regenCode(editTarget.p.id, codeRole)}><RefreshCw size={14} /></button>}
+                      </div>
+                    </>
                   )}
                   {isOwner && (
                     <div style={{ marginTop: 8 }}>
@@ -1706,7 +1763,7 @@ ${rows}</div></div>
                       </select>
                     </div>
                   )}
-                  <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7 }}>People who enter this code join as editors. (Real joining turns on with accounts.)</div>
+                  <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7 }}>The viewer code joins read-only; the editor code can make changes. (Real joining turns on with accounts.)</div>
                 </div>
                 <div className="foot-note" style={{ justifyContent: "flex-start", marginTop: 12 }}>Add or delete groups from the timeline (the <b style={{ color: "var(--ink)", margin: "0 3px" }}>+ Group</b> button). Delete the whole project from the project card.</div>
               </>
@@ -2503,14 +2560,8 @@ function TrackerView({ ctx }) {
   const [cols, setCols] = useState(() => { const s = loadTracker(activeSheet); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
   const [statuses, setStatuses] = useState(() => { const s = loadTracker(activeSheet); if (s && s.statuses) return s.statuses; const rs = (s && s.rows) || SEED_TRACKER; return Array.from(new Set(rs.map(r => r.stage).filter(Boolean))); });
 
-  // Reload data when sheet changes
-  useEffect(() => {
-    const s = loadTracker(activeSheet);
-    const rs = (s && s.rows) || (activeSheet === "main" ? SEED_TRACKER : []);
-    setData(rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
-    setCols((s && s.cols) ? s.cols.filter(c => c.key !== "rowNumber") : TRACKER_COLS.filter(c => c.key !== "rowNumber"));
-    setStatuses(s && s.statuses ? s.statuses : Array.from(new Set(rs.map(r => r.stage).filter(Boolean))));
-  }, [activeSheet]);
+  // Brand tabs are filtered views of the master "All Projects" list (one synced
+  // source of truth) — switching sheets only changes which rows are shown, not the data.
   const apiOk = useRef(false);
   const curV = useRef(0);
   const lastSave = useRef(0);
@@ -2552,7 +2603,7 @@ function TrackerView({ ctx }) {
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
-    saveTracker({ cols, rows: data, statuses }, activeSheet);
+    saveTracker({ cols, rows: data, statuses }, "main");
     if (applyingRemote.current) { applyingRemote.current = false; return; }
     if (!apiOk.current) return;
     const t = setTimeout(async () => {
@@ -2572,7 +2623,12 @@ function TrackerView({ ctx }) {
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
+  // Normalize for brand matching: lowercase, strip punctuation/spaces (so "CULVER'S" matches the "Culvers" tab).
+  const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const activeLabel = sheets.find(s => s.id === activeSheet)?.label || "";
+  const brandFilter = activeSheet === "main" ? null : normName(activeLabel);
   const rows = data.filter(r => {
+    if (brandFilter && !normName(r.projectName).includes(brandFilter)) return false;
     if (stage !== "all" && r.stage !== stage) return false;
     if (person !== "all" && !namesIn(r).includes(person)) return false;
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
@@ -2582,7 +2638,7 @@ function TrackerView({ ctx }) {
   const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
   const setStatus = (id, val) => { if (val === "__new") { const n = window.prompt("New status name:"); if (!n || !n.trim()) return; const nm = n.trim(); setStatuses(ss => ss.includes(nm) ? ss : [...ss, nm]); update(id, "stage", nm); return; } update(id, "stage", val); };
-  const addRow = () => setData(ds => [{ _id: "r" + uid() }, ...ds]);
+  const addRow = () => setData(ds => [{ _id: "r" + uid(), ...(activeSheet === "main" ? {} : { projectName: activeLabel }) }, ...ds]);
   const delRow = (id) => setData(ds => ds.filter(r => r._id !== id));
   const dropOnRow = (targetId) => { setData(ds => { if (!dragId || dragId === targetId) return ds; const from = ds.findIndex(r => r._id === dragId); const to = ds.findIndex(r => r._id === targetId); if (from < 0 || to < 0) return ds; const c = [...ds]; const [m] = c.splice(from, 1); c.splice(to, 0, m); return c; }); setDragId(null); setOverId(null); };
   const moveRow = (id, dir) => setData(ds => {
@@ -2631,26 +2687,26 @@ function TrackerView({ ctx }) {
         <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
       </div>
       {/* Sheet tabs */}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 0, flexWrap: "wrap", borderBottom: "2px solid var(--line)", paddingBottom: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 0, flexWrap: "wrap", borderBottom: "2px solid var(--line)", paddingBottom: 0, justifyContent: "flex-start", width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)" }}>
         {sheets.map(s => (
           <div key={s.id} style={{ position: "relative", display: "flex", alignItems: "center" }}>
             {renamingSheet === s.id ? (
               <input autoFocus defaultValue={s.label}
                 onBlur={e => renameSheet(s.id, e.target.value.trim() || s.label)}
                 onKeyDown={e => { if (e.key === "Enter") renameSheet(s.id, e.target.value.trim() || s.label); if (e.key === "Escape") setRenamingSheet(null); }}
-                style={{ fontFamily: "Outfit", fontSize: 13, fontWeight: 600, border: "1px solid var(--teal)", borderRadius: "8px 8px 0 0", padding: "7px 10px", background: "var(--panel2)", color: "var(--ink)", outline: "none", width: 120 }} />
+                style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 600, border: "1px solid var(--teal)", borderRadius: "8px 8px 0 0", padding: "9px 14px", background: "var(--panel2)", color: "var(--ink)", outline: "none", width: 140 }} />
             ) : (
               <button onDoubleClick={() => setRenamingSheet(s.id)} onClick={() => switchSheet(s.id)}
-                style={{ fontFamily: "Outfit", fontSize: 13, fontWeight: 600, border: "none", borderRadius: "8px 8px 0 0", padding: "8px 14px", cursor: "pointer", background: activeSheet === s.id ? "var(--panel)" : "var(--panel2)", color: activeSheet === s.id ? "var(--ink)" : "var(--muted)", borderBottom: activeSheet === s.id ? "2px solid var(--primary)" : "2px solid transparent", marginBottom: -2, transition: ".12s" }}>
+                style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 600, border: "none", borderRadius: "8px 8px 0 0", padding: "10px 20px", cursor: "pointer", background: activeSheet === s.id ? "var(--panel)" : "var(--panel2)", color: activeSheet === s.id ? "var(--ink)" : "var(--muted)", borderBottom: activeSheet === s.id ? "2px solid var(--primary)" : "2px solid transparent", marginBottom: -2, transition: ".12s" }}>
                 {s.label}
               </button>
             )}
             {activeSheet === s.id && sheets.length > 1 && (
-              <button onClick={() => deleteSheet(s.id)} title="Delete sheet" style={{ position: "absolute", right: 2, top: 4, background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 13, lineHeight: 1, padding: "0 2px" }}>×</button>
+              <button onClick={() => deleteSheet(s.id)} title="Delete sheet" style={{ position: "absolute", right: 4, top: 6, background: "none", border: "none", cursor: "pointer", color: "var(--dim)", fontSize: 14, lineHeight: 1, padding: "0 2px" }}>×</button>
             )}
           </div>
         ))}
-        <button onClick={addSheet} title="Add sheet" style={{ fontFamily: "Outfit", fontSize: 13, fontWeight: 700, border: "none", borderRadius: "8px 8px 0 0", padding: "8px 12px", cursor: "pointer", background: "transparent", color: "var(--muted)", marginBottom: -2, transition: ".12s" }}>+ New Sheet</button>
+        <button onClick={addSheet} title="Add sheet" style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 700, border: "none", borderRadius: "8px 8px 0 0", padding: "10px 16px", cursor: "pointer", background: "transparent", color: "var(--muted)", marginBottom: -2, transition: ".12s" }}>+ New Sheet</button>
       </div>
 
       <div className="panel" style={{ padding: 12, width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)", borderTopLeftRadius: 0 }}>
@@ -2809,7 +2865,7 @@ function TrackerView({ ctx }) {
                 </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>{brandFilter ? `No projects with "${activeLabel}" in the name yet.` : "No projects match."}</td></tr>}
             </tbody>
           </table>
         </div>
