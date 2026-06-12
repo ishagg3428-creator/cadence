@@ -2308,7 +2308,7 @@ const trackerEmailFor = (name) => {
 };
 const rowEmails = (r) => {
   const out = [];
-  ["pm", "ml", "me", "pe", "ee", "fp"].forEach(k => String(r[k] || "").split(/\n| and /).forEach(part => {
+  ["pm", "ml", "me", "pe", "ee", "fp"].forEach(k => String(r[k] || "").split(/\n|\/| and /).forEach(part => {
     const nm = part.trim(); if (!nm) return;
     const e = trackerEmailFor(nm); if (e && !out.includes(e)) out.push(e);
   }));
@@ -2316,7 +2316,7 @@ const rowEmails = (r) => {
 };
 function RoleCell({ value, onSave }) {
   const [editing, setEditing] = useState(false);
-  const names = String(value || "").split(/\n| and /).map(s => s.trim()).filter(Boolean);
+  const names = String(value || "").split(/\n|\/| and /).map(s => s.trim()).filter(Boolean);
   if (editing) {
     return <textarea className="trk-role-edit" autoFocus rows={Math.max(1, names.length)} defaultValue={names.join("\n")}
       onBlur={e => { setEditing(false); onSave(e.target.value.split(/\n/).map(s => s.trim()).filter(Boolean).join("\n")); }} />;
@@ -2418,7 +2418,7 @@ function TrackerView({ ctx }) {
   const [colMenu, setColMenu] = useState(false);
   const [selRow, setSelRow] = useState(null);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp"];
-  const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
+  const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
   const rows = data.filter(r => {
