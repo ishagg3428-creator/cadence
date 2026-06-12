@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, CalendarDays, Users, LayoutGrid, Mail, Check, Trash2, Pencil,
   Download, Upload, X, ChevronLeft, ChevronRight, Search, Sparkles,
@@ -7,12 +8,12 @@ import {
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
-import { SEED_SHEETS } from "./sheetsData.js";
 import { apiLoad, apiSave } from "./trackerApi.js";
+import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
  *  Cadence — dark team dashboard
- *  Home · Gantt · Board · Calendar · Team · Outlook email
+ *  Home · Gantt · Board · Calendar · Team
  * ================================================================ */
 
 const css = `
@@ -245,6 +246,18 @@ const css = `
 /* theme-safe sign-in button */
 .ms-btn { background:var(--panel2); color:var(--ink); border:1px solid var(--line2); }
 
+/* twilight theme */
+.cad.twilight {
+  --bg:#1C1B2E; --panel:#252340; --panel2:#2E2B50; --raise:#373462;
+  --line:#423E6E; --line2:#554F8A; --ink:#E4DEFF; --muted:#9B94CC; --dim:#6B6399;
+  --primary:#E03A3E; --primary-d:#C42F33; --teal:#7B8FE8; --amber:#8B7FD4; --slate:#7B74A8; --done:#3DBD7A;
+  background:
+    radial-gradient(1100px 520px at 88% -8%, rgba(224,58,62,.10) 0%, transparent 55%),
+    radial-gradient(900px 500px at -6% 108%, rgba(123,143,232,.12) 0%, transparent 52%),
+    var(--bg);
+}
+.cad.twilight .bar { background:rgba(28,27,46,.85); }
+
 /* light theme */
 .cad.light {
   --bg:#EEF2F8; --panel:#FFFFFF; --panel2:#F6F9FD; --raise:#EDF1F8;
@@ -342,19 +355,11 @@ export default function App() {
   const [data, setData] = useState({ people: [], projects: [], tasks: [] });
   const [loaded, setLoaded] = useState(false);
   const [user, setUser] = useState(null);
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("cadence:theme") || "auto"; } catch (e) { return "auto"; } });
-  const [sysLight, setSysLight] = useState(() => typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)").matches : false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(prefers-color-scheme: light)");
-    const h = (e) => setSysLight(e.matches);
-    mq.addEventListener ? mq.addEventListener("change", h) : mq.addListener(h);
-    return () => { mq.removeEventListener ? mq.removeEventListener("change", h) : mq.removeListener(h); };
-  }, []);
-  const effLight = theme === "light" || (theme === "auto" && sysLight);
-  const rootCls = "cad" + (effLight ? " light" : "");
-  const cycleTheme = () => setTheme(t => { const n = t === "auto" ? "light" : t === "light" ? "dark" : "auto"; try { localStorage.setItem("cadence:theme", n); } catch (e) {} return n; });
-  const ThemeIcon = theme === "auto" ? Monitor : theme === "light" ? Sun : Moon;
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("cadence:theme") || "dark"; } catch (e) { return "dark"; } });
+  const effLight = theme === "light";
+  const rootCls = "cad" + (theme !== "dark" ? " " + theme : "");
+  const cycleTheme = () => setTheme(t => { const n = t === "dark" ? "twilight" : t === "twilight" ? "light" : "dark"; try { localStorage.setItem("cadence:theme", n); } catch (e) {} return n; });
+  const ThemeIcon = theme === "light" ? Sun : theme === "twilight" ? Sparkles : Moon;
   const [profileOpen, setProfileOpen] = useState(false);
   const updateUser = (patch) => { setUser(u => { const n = { ...u, ...patch }; saveUser(n); return n; }); };
   const [gantt, setGantt] = useState(() => loadGantt() || gSample());
@@ -459,6 +464,7 @@ export default function App() {
     gantt, setGantt, ganttGoto, gotoGantt, clearGanttGoto: () => setGanttGoto(null),
     notif, setNotif,
     contacts, setContacts, openComposer,
+    effLight, theme,
     loadSample: () => setData(SAMPLE) };
 
   const unreadCount = buildNotifs(gantt).filter(n => !notif.read.includes(n.id) && !notif.removed.includes(n.id)).length;
@@ -793,12 +799,12 @@ function buildNotifs(gd) {
 function gSample() {
   const t = todayISO();
   return { projects: [
-    { id: uid(), name: "Clovers", color: "#E03A3E", due: addDays(t, 16), start: addDays(t, -12), myRole: "owner", code: "CLV24", codeCadence: "month", cascade: false, groups: [
+    { id: uid(), name: "Clovers", color: "#E03A3E", due: addDays(t, 16), start: addDays(t, -12), myRole: "owner", viewerCode: "CLV24", editorCode: "CLVED", codeCadence: "month", cascade: false, groups: [
       { id: uid(), name: "Survey", color: "#4FA8E8", desc: "Topographic survey & site boundaries.", start: addDays(t, -12), end: addDays(t, -6), members: [{ id: uid(), name: "Maya Chen", color: "#4FA8E8", done: true }, { id: uid(), name: "Sara Lopez", color: "#9A6BF0", done: true }] },
       { id: uid(), name: "Civil", color: "#E8A53C", desc: "Grading, drainage, foundation prep.", start: addDays(t, -5), end: addDays(t, 2), members: [{ id: uid(), name: "Devon Brooks", color: "#2E80C2", done: false }, { id: uid(), name: "Maya Chen", color: "#4FA8E8", done: true }] },
       { id: uid(), name: "Electrical", color: "#5FD18C", desc: "Rough-in and panel install.", start: addDays(t, 3), end: addDays(t, 9), members: [{ id: uid(), name: "Sara Lopez", color: "#9A6BF0", done: false }] },
     ]},
-    { id: uid(), name: "Walmart Remodel", color: "#4FA8E8", due: addDays(t, 78), start: addDays(t, 6), myRole: "editor", code: "WMR78", codeCadence: "month", cascade: false, groups: [
+    { id: uid(), name: "Walmart Remodel", color: "#4FA8E8", due: addDays(t, 78), start: addDays(t, 6), myRole: "editor", viewerCode: "WMR78", editorCode: "WMRED", codeCadence: "month", cascade: false, groups: [
       { id: uid(), name: "Demo", color: "#E0734A", desc: "Interior demolition.", start: addDays(t, 6), end: addDays(t, 16), members: [{ id: uid(), name: "Devon Brooks", color: "#2E80C2", done: false }] },
       { id: uid(), name: "Framing", color: "#C56BD6", desc: "Steel stud framing.", start: addDays(t, 17), end: addDays(t, 38), members: [{ id: uid(), name: "Maya Chen", color: "#4FA8E8", done: false }] },
     ]},
@@ -886,6 +892,13 @@ function remaining(dueISO, nowMs) {
 }
 const ROLE_C = { owner: "#E03A3E", editor: "#4FA8E8", viewer: "#6E83A2" };
 const genCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
+// Two distinct invite codes per project: viewers join read-only, editors can edit.
+const genCodes = () => { const viewerCode = genCode(); let editorCode = genCode(); while (editorCode === viewerCode) editorCode = genCode(); return { viewerCode, editorCode }; };
+const viewerCodeOf = (p) => (p && (p.viewerCode || p.code)) || "";
+const editorCodeOf = (p) => (p && p.editorCode) || "";
+// What gets uploaded to the shared store when a project is published — strip per-user fields.
+const publishableProject = (p) => { const { myRole, invited, invitedAs, invitedEmail, deleted, deletedAt, ...rest } = p; return rest; };
+const codeRoleFor = (p, code) => editorCodeOf(p).toUpperCase() === code ? "editor" : viewerCodeOf(p).toUpperCase() === code ? "viewer" : null;
 const BG_PRESETS = [
   { name: "None", css: "" },
   { name: "Red", css: "rgba(224,58,62,.30)" },
@@ -941,6 +954,8 @@ function GanttView({ ctx }) {
   const [joinCode, setJoinCode] = useState("");
   const [joinErr, setJoinErr] = useState("");
   const [joined, setJoined] = useState(null);
+  const [codeRole, setCodeRole] = useState("viewer"); // which invite code the panel shows; viewer by default
+  const [sortBy, setSortBy] = useState("created"); // project sort: created (oldest first) | name | modified
   const [presOpen, setPresOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(null);
   const [purgeArm, setPurgeArm] = useState(null);
@@ -954,12 +969,100 @@ function GanttView({ ctx }) {
   const [cascPick, setCascPick] = useState(null);
   const [cascSel, setCascSel] = useState([]);
   useEffect(() => { setAdjOpen(false); setAdjDelta(0); setAdjMode("none"); setAdjSel([]); setMvStart(false); setMvEnd(true); }, [edit && edit.gid]);
-  const regenCode = (pid) => patchProject(pid, { code: genCode() });
+  const regenCode = (pid, role) => setProjects(ps => ps.map(p => {
+    if (p.id !== pid) return p;
+    const other = role === "editor" ? viewerCodeOf(p) : editorCodeOf(p);
+    let c = genCode(); while (c === other) c = genCode();
+    return { ...p, [role === "editor" ? "editorCode" : "viewerCode"]: c };
+  }));
+  // Backfill both invite codes on older projects that only have a single legacy code.
+  useEffect(() => {
+    if (!edit || !edit.pid) return;
+    const p = gd.projects.find(x => x.id === edit.pid);
+    if (p && (!p.viewerCode || !p.editorCode)) {
+      const viewerCode = p.viewerCode || p.code || genCode();
+      let editorCode = p.editorCode || genCode();
+      while (editorCode === viewerCode) editorCode = genCode();
+      patchProject(p.id, { viewerCode, editorCode });
+    }
+  }, [edit && edit.pid]);
   const completeProject = (pid, val) => patchProject(pid, { done: val });
   const softDelete = (pid) => patchProject(pid, { deleted: true, deletedAt: Date.now() });
   const restoreProject = (pid) => patchProject(pid, { deleted: false, deletedAt: null });
   const purgeProject = (pid) => setProjects(ps => ps.filter(p => p.id !== pid));
-  const tryJoin = () => { const c = joinCode.trim().toUpperCase(); const hit = gd.projects.find(p => (p.code||"").toUpperCase() === c); if (!c) return; if (hit) { setJoinErr(""); setJoinCode(""); setJoined(hit.name); setTimeout(() => setJoined(null), 2600); bumpOpen(hit.id); setOpenId(hit.id); setWhoFilter("all"); } else { setJoinErr("No project with that code (demo)."); } };
+  const openJoined = (pid) => { bumpOpen(pid); setOpenId(pid); setWhoFilter("all"); };
+  const tryJoin = async () => {
+    const c = joinCode.trim().toUpperCase(); if (!c) return;
+    // Already in this browser? Open it (and switch role if a different code was used).
+    let role = null;
+    const hit = gd.projects.find(p => { role = codeRoleFor(p, c); return !!role; });
+    if (hit) {
+      if (hit.myRole === "owner") { setJoinErr(""); setJoinCode(""); openJoined(hit.id); return; } // your own project — just open it
+      if (hit.myRole !== role) setProjects(ps => ps.map(p => p.id === hit.id ? { ...p, myRole: role } : p));
+      setJoinErr(""); setJoinCode(""); setJoined({ name: hit.name, role });
+      setTimeout(() => setJoined(null), 2600); openJoined(hit.id);
+      return;
+    }
+    // Look it up in the shared store (projects published by their owners).
+    setJoinErr("Checking code…");
+    try {
+      const doc = await ganttLoad();
+      let r2 = null;
+      const remote = Object.values((doc && doc.projects) || {}).find(p => { r2 = codeRoleFor(p, c); return !!r2; });
+      if (!remote) { setJoinErr("No project with that code."); return; }
+      setProjects(ps => [...ps.filter(p => p.id !== remote.id), { ...remote, myRole: r2 }]);
+      setJoinErr(""); setJoinCode(""); setJoined({ name: remote.name, role: r2 });
+      setTimeout(() => setJoined(null), 2600); openJoined(remote.id);
+    } catch (e) {
+      setJoinErr("Can't reach the sharing server right now.");
+    }
+  };
+  // Publish shareable projects (owner always; editors when their copy is newer) so codes work across devices.
+  const applyingShared = useRef(false);
+  useEffect(() => {
+    if (applyingShared.current) { applyingShared.current = false; return; }
+    const t = setTimeout(async () => {
+      const ps = gdRef.current.projects;
+      if (!ps.some(p => p.myRole !== "viewer" && (viewerCodeOf(p) || editorCodeOf(p)))) return;
+      try {
+        const doc = (await ganttLoad()) || {};
+        const shared = doc.projects || {};
+        let changed = false;
+        for (const p of ps) {
+          if (p.myRole === "viewer" || !(viewerCodeOf(p) || editorCodeOf(p))) continue;
+          if (p.deleted) { if (p.myRole === "owner" && shared[p.id]) { delete shared[p.id]; changed = true; } continue; }
+          const cur = shared[p.id];
+          const shouldWrite = p.myRole === "owner" ? (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) : (!cur ? false : (p.updatedAt || 0) > (cur.updatedAt || 0));
+          if (shouldWrite) { shared[p.id] = publishableProject(p); changed = true; }
+        }
+        if (changed) await ganttSave({ projects: shared });
+      } catch (e) {}
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [gd.projects]);
+  // Poll the shared store so joined projects receive the owner's updates.
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      try {
+        const doc = await ganttLoad();
+        if (stop || !doc || !doc.projects) return;
+        const cur = gdRef.current.projects;
+        let changed = false;
+        const next = cur.map(p => {
+          if (p.myRole === "owner" || p.deleted) return p;
+          const sh = doc.projects[p.id];
+          if (!sh || (sh.updatedAt || 0) <= (p.updatedAt || 0)) return p;
+          changed = true;
+          return { ...sh, myRole: p.myRole };
+        });
+        if (changed) { applyingShared.current = true; setGd(g => ({ ...g, projects: next })); }
+      } catch (e) {}
+    };
+    tick();
+    const iv = setInterval(tick, 8000);
+    return () => { stop = true; clearInterval(iv); };
+  }, []);
   const [hoverGid, setHoverGid] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [dragTip, setDragTip] = useState(null);
@@ -1001,12 +1104,21 @@ function GanttView({ ctx }) {
   useEffect(() => { if (!openId) return; const p = gdRef.current.projects.find(x => x.id === openId); if (p && p.invited) setGd(g => ({ ...g, projects: g.projects.map(x => x.id === openId ? { ...x, invited: false } : x) })); }, [openId]);
 
   const setProjects = (fn) => { setHistory(h => [...h.slice(-29), gdRef.current.projects]); setGd(g => ({ ...g, projects: fn(g.projects) })); };
-  const patchProject = (pid, patch) => setProjects(ps => ps.map(p => p.id === pid ? { ...p, ...patch } : p));
-  const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => p.id !== pid ? p : { ...p, groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
-  const addProject = () => { const id = uid(); setProjects(ps => [...ps, { id, name: "New project", color: PALETTE[ps.length % PALETTE.length], due: addDays(todayISO(), 30), start: todayISO(), myRole: "owner", code: genCode(), codeCadence: "month", cascade: false, groups: [] }]); setOpenId(id); setEdit({ pid: id }); };
+  // Viewers are read-only: they can only remove the project from their own list (deleted/deletedAt).
+  const patchProject = (pid, patch) => setProjects(ps => ps.map(p => {
+    if (p.id !== pid) return p;
+    if (p.myRole === "viewer") {
+      const allowed = {};
+      ["deleted", "deletedAt"].forEach(k => { if (k in patch) allowed[k] = patch[k]; });
+      return Object.keys(allowed).length ? { ...p, ...allowed } : p;
+    }
+    return { ...p, ...patch, updatedAt: Date.now() };
+  }));
+  const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => (p.id !== pid || p.myRole === "viewer") ? p : { ...p, updatedAt: Date.now(), groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
+  const addProject = () => { const id = uid(); const ts = Date.now(); setProjects(ps => [...ps, { id, name: "New project", color: PALETTE[ps.length % PALETTE.length], due: addDays(todayISO(), 30), start: todayISO(), myRole: "owner", ...genCodes(), codeCadence: "month", cascade: false, createdAt: ts, updatedAt: ts, groups: [] }]); setOpenId(id); setEdit({ pid: id }); };
   const delProject = (pid) => { setProjects(ps => ps.filter(p => p.id !== pid)); setEdit(null); setOpenId(null); };
-  const addGroup = (pid) => { const id = uid(); const p = gdRef.current.projects.find(x => x.id === pid); const used = new Set((p ? p.groups : []).map(g => g.color)); const color = PALETTE.find(c => !used.has(c)) || PALETTE[(p ? p.groups.length : 0) % PALETTE.length]; setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: [...x.groups, { id, name: "New group", color, desc: "", start: todayISO(), end: addDays(todayISO(), 5), members: [] }] })); setEdit({ pid, gid: id }); };
-  const delGroup = (pid, gid) => { const p = gdRef.current.projects.find(x => x.id === pid); let next = { pid }; if (p) { const idx = p.groups.findIndex(g => g.id === gid); const remaining = p.groups.filter(g => g.id !== gid); if (remaining.length) next = { pid, gid: remaining[Math.max(0, idx - 1)].id }; } setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: x.groups.filter(g => g.id !== gid) })); setEdit(next); };
+  const addGroup = (pid) => { const id = uid(); const p = gdRef.current.projects.find(x => x.id === pid); if (p && p.myRole === "viewer") return; const used = new Set((p ? p.groups : []).map(g => g.color)); const color = PALETTE.find(c => !used.has(c)) || PALETTE[(p ? p.groups.length : 0) % PALETTE.length]; setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: [...x.groups, { id, name: "New group", color, desc: "", start: todayISO(), end: addDays(todayISO(), 5), members: [] }] })); setEdit({ pid, gid: id }); };
+  const delGroup = (pid, gid) => { const p = gdRef.current.projects.find(x => x.id === pid); if (p && p.myRole === "viewer") return; let next = { pid }; if (p) { const idx = p.groups.findIndex(g => g.id === gid); const remaining = p.groups.filter(g => g.id !== gid); if (remaining.length) next = { pid, gid: remaining[Math.max(0, idx - 1)].id }; } setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: x.groups.filter(g => g.id !== gid) })); setEdit(next); };
   const toggleMember = (pid, gid, mid) => patchGroup(pid, gid, gr => ({ ...gr, members: gr.members.map(m => m.id === mid ? { ...m, done: !m.done } : m) }));
   const addMember = (pid, gid, person) => patchGroup(pid, gid, gr => gr.members.some(m => m.id === person.id) ? gr : ({ ...gr, members: [...gr.members, { id: person.id, name: person.name, color: person.color, done: false }] }));
   const removeMember = (pid, gid, mid) => patchGroup(pid, gid, gr => ({ ...gr, members: gr.members.filter(m => m.id !== mid) }));
@@ -1046,18 +1158,27 @@ function GanttView({ ctx }) {
                 <input value={joinCode} onChange={e => { setJoinCode(e.target.value); setJoinErr(""); }} onKeyDown={e => e.key === "Enter" && tryJoin()} placeholder="Join with a code" style={{ width: 130, fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 10, padding: "8px 11px", background: "var(--panel)", outline: "none", textTransform: "uppercase" }} />
                 <button className="btn" onClick={tryJoin}>Join</button>
               </div>
-              <div style={{ fontSize: 10.5, color: joinErr ? "var(--primary)" : "var(--dim)", marginTop: 3, textAlign: "center" }}>{joinErr || "demo · try CLV24"}</div>
+              <div style={{ fontSize: 10.5, color: joinErr ? "var(--primary)" : "var(--dim)", marginTop: 3, textAlign: "center" }}>{joinErr || "Enter a project's viewer or editor code"}</div>
             </div>
             {gd.projects.some(p => p.deleted) && <button className="btn" onClick={() => setOpenId("__trash__")}><Trash2 size={15} />Trash ({gd.projects.filter(p => p.deleted).length})</button>}
             <button className="btn btn-pri" onClick={addProject}><Plus size={16} />New project</button>
           </div>
         </div>
         {joined && <Confetti />}
-        {joined && <div className="toast">🎉 Successfully joined "{joined}"</div>}
+        {joined && <div className="toast">🎉 Successfully joined "{joined.name}" as {joined.role}</div>}
         {gd.projects.filter(p => !p.deleted).length > 0 && (
-          <div style={{ position: "relative", maxWidth: 320, marginBottom: 14 }}>
-            <Search size={15} style={{ position: "absolute", left: 11, top: 10, color: "var(--dim)" }} />
-            <input value={pickSearch} onChange={e => setPickSearch(e.target.value)} placeholder="Search projects…" style={{ width: "100%", paddingLeft: 34, fontFamily: "Outfit", fontSize: 13.5, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 11, padding: "9px 12px 9px 34px", background: "var(--panel)", outline: "none" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: "1 1 220px", maxWidth: 320 }}>
+              <Search size={15} style={{ position: "absolute", left: 11, top: 10, color: "var(--dim)" }} />
+              <input value={pickSearch} onChange={e => setPickSearch(e.target.value)} placeholder="Search projects…" style={{ width: "100%", paddingLeft: 34, fontFamily: "Outfit", fontSize: 13.5, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 11, padding: "9px 12px 9px 34px", background: "var(--panel)", outline: "none" }} />
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--muted)" }}>Sort
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 10, padding: "8px 10px", background: "var(--panel)", outline: "none", cursor: "pointer" }}>
+                <option value="created">Date created</option>
+                <option value="name">Name (A–Z)</option>
+                <option value="modified">Last modified</option>
+              </select>
+            </label>
           </div>
         )}
         {gd.projects.filter(p => !p.deleted).length >= 2 && !pickSearch.trim() && (
@@ -1067,14 +1188,20 @@ function GanttView({ ctx }) {
             <ChevronRight size={18} style={{ marginLeft: "auto", color: "var(--muted)" }} />
           </div>
         )}
-        {(() => { const pickList = gd.projects.filter(p => !p.deleted && (!pickSearch.trim() || p.name.toLowerCase().includes(pickSearch.trim().toLowerCase()))); return (
-          gd.projects.filter(p => !p.deleted).length === 0 ? <div className="empty-sm" style={{ padding: 40 }}>No projects yet — create your first one.</div> :
-          pickList.length === 0 ? <div className="empty-sm" style={{ padding: 30 }}>No projects match "{pickSearch}".</div> :
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: 14 }}>
-            {pickList.map(p => {
-              const rem = remaining(p.due, now);
-              const total = p.groups.length, done = p.groups.filter(g => g.members.length > 0 && g.members.every(m => m.done)).length;
-              return (
+        {(() => {
+          const base = gd.projects.filter(p => !p.deleted && (!pickSearch.trim() || p.name.toLowerCase().includes(pickSearch.trim().toLowerCase())));
+          const order = new Map(gd.projects.map((p, i) => [p.id, i]));
+          const createdVal = (p) => p.createdAt || order.get(p.id) || 0;
+          const updatedVal = (p) => p.updatedAt || p.createdAt || order.get(p.id) || 0;
+          const sortFn = sortBy === "name" ? (a, b) => (a.name || "").localeCompare(b.name || "")
+            : sortBy === "modified" ? (a, b) => updatedVal(b) - updatedVal(a)
+            : (a, b) => createdVal(a) - createdVal(b);
+          const active = base.filter(p => !p.done).sort(sortFn);
+          const completed = base.filter(p => p.done).sort(sortFn);
+          const renderCard = (p) => {
+            const rem = remaining(p.due, now);
+            const total = p.groups.length, done = p.groups.filter(g => g.members.length > 0 && g.members.every(m => m.done)).length;
+            return (
                 <div key={p.id} className="panel" style={{ position: "relative", borderTop: `3px solid ${p.color}`, paddingBottom: 12, ...(p.invited ? { boxShadow: "0 0 0 2px var(--teal)" } : {}) }}>
                   {p.invited && <div style={{ position: "absolute", top: -10, left: 12, zIndex: 4, background: "var(--teal)", color: "#06121e", fontSize: 11, fontWeight: 800, padding: "3px 10px", borderRadius: 99, boxShadow: "0 3px 10px rgba(0,0,0,.3)" }}>Invited! · {p.invitedAs || "editor"}</div>}
                   {p.done && <div style={{ position: "absolute", inset: 0, background: "rgba(51,179,107,.16)", border: "2px solid var(--done)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2, pointerEvents: "none" }}><span style={{ fontFamily: "Fraunces", fontSize: 21, fontWeight: 700, color: "var(--done)", display: "flex", gap: 8, alignItems: "center" }}><CheckCircle2 size={23} />Completed</span></div>}
@@ -1092,10 +1219,27 @@ function GanttView({ ctx }) {
                     <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setConfirmDel(p); }} style={{ padding: "9px 13px", color: "#ff8a8c" }} title="Delete project"><X size={19} /></button>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        ); })()}
+            );
+          };
+          const grid = (list) => <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(270px,1fr))", gap: 14 }}>{list.map(renderCard)}</div>;
+          return (
+            gd.projects.filter(p => !p.deleted).length === 0 ? <div className="empty-sm" style={{ padding: 40 }}>No projects yet — create your first one.</div> :
+            base.length === 0 ? <div className="empty-sm" style={{ padding: 30 }}>No projects match "{pickSearch}".</div> :
+            <>
+              {active.length > 0 ? grid(active) : <div className="empty-sm" style={{ padding: 24 }}>No active projects — everything's complete. 🎉</div>}
+              {completed.length > 0 && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "26px 0 12px" }}>
+                    <CheckCircle2 size={17} color="var(--done)" />
+                    <span style={{ fontFamily: "Fraunces", fontSize: 16.5, fontWeight: 600, color: "var(--ink)" }}>Completed</span>
+                    <span style={{ fontSize: 12.5, color: "var(--dim)", fontWeight: 600 }}>{completed.length}</span>
+                  </div>
+                  {grid(completed)}
+                </>
+              )}
+            </>
+          );
+        })()}
         {confirmDel && (
           <div className="ov" onClick={() => setConfirmDel(null)}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 390 }}>
@@ -1397,7 +1541,7 @@ ${rows}</div></div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {canOpen && proj.codeCadence !== "off" && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--teal)", background: "rgba(79,168,232,.14)", border: "1px solid #4FA8E855", borderRadius: 8, padding: "4px 9px", letterSpacing: "1px" }} title="Invite code (demo)">#{proj.code}</span>}
+              {canOpen && proj.codeCadence !== "off" && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--teal)", background: "rgba(79,168,232,.14)", border: "1px solid #4FA8E855", borderRadius: 8, padding: "4px 9px", letterSpacing: "1px" }} title="Viewer invite code — teammates can join with this">#{viewerCodeOf(proj)}</span>}
               <span style={{ fontSize: 12, fontWeight: 700, color: ROLE_C[role], background: ROLE_C[role] + "22", border: `1px solid ${ROLE_C[role]}55`, borderRadius: 99, padding: "5px 12px", textTransform: "capitalize" }}>You're {role}</span>
               {/* demo presence: your avatar, hover for everyone */}
               <div className="pres dotwrap" style={{ position: "relative" }} onMouseEnter={() => setPresOpen(true)} onMouseLeave={() => setPresOpen(false)}>
@@ -1681,14 +1825,20 @@ ${rows}</div></div>
                   </label>}
                 </div></div>
                 <div style={{ marginTop: 8, padding: 11, background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 7 }}>Invite code <span style={{ color: "var(--dim)", fontWeight: 600 }}>· demo</span></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 7 }}>Invite code</div>
                   {editTarget.p.codeCadence === "off" ? (
                     <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Joining is off — no one can join with a code.</div>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontFamily: "Fraunces", fontSize: 22, fontWeight: 600, letterSpacing: "2px", color: "var(--teal)" }}>{editTarget.p.code}</span>
-                      {isOwner && <button className="btn btn-ghost icon-btn" title="Regenerate" onClick={() => regenCode(editTarget.p.id)}><RefreshCw size={14} /></button>}
-                    </div>
+                    <>
+                      <select className="btn btn-sm" style={{ width: "100%", marginBottom: 8 }} value={codeRole} onChange={e => setCodeRole(e.target.value)}>
+                        <option value="viewer">Viewer code — join read-only</option>
+                        <option value="editor">Editor code — can edit</option>
+                      </select>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontFamily: "Fraunces", fontSize: 22, fontWeight: 600, letterSpacing: "2px", color: "var(--teal)" }}>{(codeRole === "editor" ? editorCodeOf(editTarget.p) : viewerCodeOf(editTarget.p)) || "—"}</span>
+                        {isOwner && <button className="btn btn-ghost icon-btn" title={`Regenerate ${codeRole} code`} onClick={() => regenCode(editTarget.p.id, codeRole)}><RefreshCw size={14} /></button>}
+                      </div>
+                    </>
                   )}
                   {isOwner && (
                     <div style={{ marginTop: 8 }}>
@@ -1698,7 +1848,7 @@ ${rows}</div></div>
                       </select>
                     </div>
                   )}
-                  <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7 }}>People who enter this code join as editors. (Real joining turns on with accounts.)</div>
+                  <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7 }}>Share a code with a teammate — they enter it in "Join with a code" on their device. Viewer code = read-only; editor code = can edit.</div>
                 </div>
                 <div className="foot-note" style={{ justifyContent: "flex-start", marginTop: 12 }}>Add or delete groups from the timeline (the <b style={{ color: "var(--ink)", margin: "0 3px" }}>+ Group</b> button). Delete the whole project from the project card.</div>
               </>
@@ -1973,6 +2123,7 @@ function TeamView({ ctx }) {
   const [gq, setGq] = useState("");
   const [pq, setPq] = useState("");
   const [openPerson, setOpenPerson] = useState(null);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const gComplete = (g) => g.members.length > 0 && g.members.every(m => m.done);
 
   // build contact book from everyone who's been on a project with you
@@ -2043,12 +2194,16 @@ function TeamView({ ctx }) {
         </>
       )}
 
-      <div className="sec-h"><Users size={18} />People</div>
-      <div style={{ position: "relative", maxWidth: 280, marginBottom: 10 }}>
-        <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: "var(--dim)" }} />
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search people…" style={{ width: "100%", paddingLeft: 30, fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 9, padding: "7px 10px 7px 30px", background: "var(--panel)", outline: "none" }} />
+      <div className="sec-h" style={{ cursor: "pointer", userSelect: "none" }} onClick={() => { setPeopleOpen(v => !v); setQ(""); }}>
+        <Users size={18} />All People<span style={{ marginLeft: "auto", fontSize: 12, color: "var(--dim)", fontWeight: 500 }}>{peopleOpen ? "▲" : "▼"}</span>
       </div>
-      {people.length === 0 ? <div className="empty-sm">No one yet — once people are added to your projects' groups, they'll show up here.</div> :
+      {peopleOpen && (
+        <div style={{ position: "relative", maxWidth: 280, marginBottom: 10 }}>
+          <Search size={14} style={{ position: "absolute", left: 10, top: 9, color: "var(--dim)" }} />
+          <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Search people…" style={{ width: "100%", fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 9, padding: "7px 10px 7px 30px", background: "var(--panel)", outline: "none" }} />
+        </div>
+      )}
+      {peopleOpen && (people.length === 0 ? <div className="empty-sm">No one yet — once people are added to your projects' groups, they'll show up here.</div> :
         shown.length === 0 ? <div className="empty-sm">No one matches "{q}".</div> :
         <div className="team-grid">
           {shown.map(p => (
@@ -2063,7 +2218,7 @@ function TeamView({ ctx }) {
               <button className="btn btn-ghost icon-btn" title="Email" onClick={(e) => { e.stopPropagation(); openComposer([p.id]); }}><Mail size={15} /></button>
             </div>
           ))}
-        </div>}
+        </div>)}
 
       <div className="sec-h"><FolderOpen size={18} />Projects</div>
       <div className="panel">
@@ -2296,9 +2451,19 @@ const CALKEY = "cadence:caldnotes:v1";
 function loadCalNotes() { try { const v = localStorage.getItem(CALKEY); if (v) return JSON.parse(v); } catch (e) {} return {}; }
 function saveCalNotes(n) { try { localStorage.setItem(CALKEY, JSON.stringify(n)); } catch (e) {} }
 /* ---------------- Tracker (Excel-style sheet) ---------------- */
-const TRACKER_KEY = "cadence:tracker:v2";
-function loadTracker() { try { const v = localStorage.getItem(TRACKER_KEY); if (v) { const p = JSON.parse(v); return Array.isArray(p) ? { rows: p } : p; } } catch (e) {} return null; }
-function saveTracker(d) { try { localStorage.setItem(TRACKER_KEY, JSON.stringify(d)); } catch (e) {} }
+const TRACKER_KEY = "cadence:tracker:v3"; // v3: re-seeded from the 2026-06-12 Excel export (COM-1 + Culvers + Costco + ALDI)
+const SHEETS_KEY = "cadence:tracker:sheets:v1";
+const DEFAULT_SHEETS = [
+  { id: "main", label: "All Projects" },
+  { id: "culvers", label: "Culvers" },
+  { id: "aldi", label: "Aldi" },
+  { id: "costco", label: "Costco" },
+];
+function loadSheets() { try { const v = localStorage.getItem(SHEETS_KEY); if (v) return JSON.parse(v); } catch (e) {} return DEFAULT_SHEETS; }
+function saveSheets(s) { try { localStorage.setItem(SHEETS_KEY, JSON.stringify(s)); } catch (e) {} }
+function sheetKey(id) { return id === "main" ? TRACKER_KEY : `cadence:tracker:sheet:${id}`; }
+function loadTracker(id = "main") { try { const v = localStorage.getItem(sheetKey(id)); if (v) { const p = JSON.parse(v); return Array.isArray(p) ? { rows: p } : p; } } catch (e) {} return null; }
+function saveTracker(d, id = "main") { try { localStorage.setItem(sheetKey(id), JSON.stringify(d)); } catch (e) {} }
 const TRACKER_BLOCK = new Set(["SEATTLE", "DALLAS", "IOWA", "OTHERS", "COM-1"]);
 const trackerEmailFor = (name) => {
   const parts = String(name || "").trim().split(/\s+/).map(p => p.replace(/[^A-Za-z]/g, "")).filter(Boolean);
@@ -2314,15 +2479,100 @@ const rowEmails = (r) => {
   }));
   return out;
 };
-function RoleCell({ value, onSave }) {
+const ALL_NAMES = Object.keys(EMAIL_DIR).map(k => k.replace(/\b\w/g, c => c.toUpperCase()));
+
+function RoleCell({ value, onSave, effLight, theme }) {
   const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [sugIdx, setSugIdx] = useState(-1);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0 });
+  const taRef = useRef(null);
+  const pickingRef = useRef(false);
+
   const names = String(value || "").split(/\n|\/| and /).map(s => s.trim()).filter(Boolean);
+
+  const commit = (text) => {
+    setEditing(false);
+    setSuggestions([]);
+    onSave(text.split(/\n/).map(s => s.trim()).filter(Boolean).join("\n"));
+  };
+
+  // Get the last partial word on the last line to drive suggestions
+  const getLastWord = (text) => {
+    const lastLine = text.split("\n").pop() || "";
+    return lastLine.trim();
+  };
+
+  const handleChange = (e) => {
+    const text = e.target.value;
+    setDraft(text);
+    const word = getLastWord(text);
+    if (word.length >= 1) {
+      const wl = word.toLowerCase();
+      const matches = ALL_NAMES.filter(n => n.toLowerCase().includes(wl)).slice(0, 8);
+      if (taRef.current) {
+        const r = taRef.current.getBoundingClientRect();
+        setDropPos({ top: r.bottom, left: r.left });
+      }
+      setSuggestions(matches);
+      setSugIdx(-1);
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const pickSuggestion = (name) => {
+    const lines = draft.split("\n");
+    lines[lines.length - 1] = name;
+    const next = lines.join("\n");
+    setDraft(next);
+    setSuggestions([]);
+    setSugIdx(-1);
+    taRef.current?.focus();
+  };
+
+  const handleKey = (e) => {
+    if (suggestions.length === 0) {
+      if (e.key === "Escape") commit(draft);
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setSugIdx(i => Math.min(i + 1, suggestions.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setSugIdx(i => Math.max(i - 1, -1)); }
+    else if ((e.key === "Enter" || e.key === "Tab") && sugIdx >= 0) {
+      e.preventDefault();
+      pickSuggestion(suggestions[sugIdx]);
+    } else if (e.key === "Escape") {
+      setSuggestions([]);
+    }
+  };
+
   if (editing) {
-    return <textarea className="trk-role-edit" autoFocus rows={Math.max(1, names.length)} defaultValue={names.join("\n")}
-      onBlur={e => { setEditing(false); onSave(e.target.value.split(/\n/).map(s => s.trim()).filter(Boolean).join("\n")); }} />;
+    return (
+      <div style={{ position: "relative" }}>
+        <textarea ref={taRef} className="trk-role-edit" autoFocus rows={Math.max(1, draft.split("\n").length)}
+          value={draft}
+          onChange={handleChange}
+          onKeyDown={handleKey}
+          onBlur={() => { if (!pickingRef.current) commit(draft); }} />
+        {suggestions.length > 0 && createPortal(
+          <div style={{ position: "fixed", top: dropPos.top, left: dropPos.left, zIndex: 9999, background: theme === "light" ? "#fff" : theme === "twilight" ? "#2E2B50" : "#172E4B", border: `1px solid ${theme === "light" ? "#c0cad8" : theme === "twilight" ? "#423E6E" : "#26456B"}`, borderRadius: 8, boxShadow: "0 8px 28px rgba(0,0,0,.35)", minWidth: 220, overflow: "hidden" }}>
+            {suggestions.map((s, i) => (
+              <div key={s} data-suggestion="1" tabIndex={-1}
+                onMouseDown={e => { e.preventDefault(); pickingRef.current = true; pickSuggestion(s); setTimeout(() => { pickingRef.current = false; }, 100); }}
+                style={{ padding: "8px 14px", fontSize: 13, cursor: "pointer", background: i === sugIdx ? "#E03A3E" : "transparent", color: i === sugIdx ? "#fff" : theme === "light" ? "#1b2330" : "#E4DEFF", fontFamily: "Outfit", fontWeight: 500 }}>
+                {s}
+              </div>
+            ))}
+          </div>,
+          document.body
+        )}
+      </div>
+    );
   }
+
   return (
-    <div className="trk-role" onDoubleClick={() => setEditing(true)} title="Double-click to edit">
+    <div className="trk-role" onDoubleClick={() => { setDraft(names.join("\n")); setEditing(true); }} title="Double-click to edit">
       {names.length === 0 ? <span style={{ color: "#b9c1cd", paddingLeft: 8 }}>—</span> :
         names.map((n, i) => { const e = trackerEmailFor(n); return <div key={i}>{e ? <a href={"mailto:" + e} onClick={ev => ev.stopPropagation()}>{n}</a> : <span>{n}</span>}</div>; })}
     </div>
@@ -2349,79 +2599,127 @@ const TRACKER_COLS = [
   { key: "stamp", label: "Stamp", w: 110 },
   { key: "stage", label: "Stage", w: 170 },
 ];
-function loadSheets() {
-  const d = loadTracker();
-  if (!d) return null;
-  if (d.sheets) return d.sheets;
-  if (d.rows) return [{ id: "com1", name: "COM-1", cols: (d.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber"), statuses: d.statuses || [], rows: d.rows }, ...SEED_SHEETS.filter(s => s.name !== "COM-1")];
-  return null;
-}
 function TrackerView({ ctx }) {
-  const [sheets, setSheets] = useState(() => loadSheets() || SEED_SHEETS);
-  const [active, setActive] = useState(0);
-  const sheet = sheets[Math.min(active, sheets.length - 1)] || { rows: [], cols: [], statuses: [] };
-  const data = sheet.rows, cols = sheet.cols, statuses = sheet.statuses;
-  const visCols = cols.filter(c => !c.hidden);
-  const toggleCol = (key) => setCols(cs => cs.map(c => c.key === key ? { ...c, hidden: !c.hidden } : c));
-  const patchSheet = (fn) => setSheets(ss => ss.map((s, i) => i === active ? { ...s, ...fn(s) } : s));
-  const setData = (v) => patchSheet(s => ({ rows: typeof v === "function" ? v(s.rows) : v }));
-  const setCols = (v) => patchSheet(s => ({ cols: typeof v === "function" ? v(s.cols) : v }));
-  const setStatuses = (v) => patchSheet(s => ({ statuses: typeof v === "function" ? v(s.statuses) : v }));
-  const addSheet = () => { const name = window.prompt("New sheet name:"); if (!name || !name.trim()) return; setSheets(ss => [...ss, { id: "s" + uid(), name: name.trim(), cols: [{ key: "projectName", label: "Project Name", w: 260, sticky: true }, { key: "stage", label: "Stage", w: 170 }], statuses: [], rows: [] }]); setActive(sheets.length); };
-  const switchSheet = (i) => { setActive(i); setQ(""); setStage("all"); setPerson("all"); };
+  const { effLight, theme } = ctx;
+  const [sheets, setSheets] = useState(() => loadSheets());
+  const [activeSheet, setActiveSheet] = useState("main");
+  const [renamingSheet, setRenamingSheet] = useState(null);
+
+  const switchSheet = (id) => {
+    // save current sheet before switching
+    setActiveSheet(id);
+  };
+
+  const addSheet = () => {
+    const label = window.prompt("Sheet name:");
+    if (!label || !label.trim()) return;
+    const id = "sheet_" + uid();
+    const next = [...sheets, { id, label: label.trim() }];
+    setSheets(next);
+    saveSheets(next);
+    setActiveSheet(id);
+  };
+
+  const deleteSheet = (id) => {
+    if (sheets.length <= 1) { alert("Can't delete the last sheet."); return; }
+    if (!window.confirm(`Delete sheet "${sheets.find(s => s.id === id)?.label}"?`)) return;
+    try { localStorage.removeItem(sheetKey(id)); } catch (e) {}
+    const next = sheets.filter(s => s.id !== id);
+    setSheets(next);
+    saveSheets(next);
+    if (activeSheet === id) setActiveSheet(next[0].id);
+  };
+
+  const renameSheet = (id, label) => {
+    const next = sheets.map(s => s.id === id ? { ...s, label } : s);
+    setSheets(next);
+    saveSheets(next);
+    setRenamingSheet(null);
+  };
+
+  const [data, setData] = useState(() => {
+    const s = loadTracker(activeSheet);
+    const rs = (s && s.rows && s.rows.length) ? s.rows : (activeSheet === "main" ? SEED_TRACKER : []);
+    return rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
+  });
+  const [cols, setCols] = useState(() => { const s = loadTracker(activeSheet); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
+  const [statuses, setStatuses] = useState(() => { const s = loadTracker(activeSheet); if (s && s.statuses) return s.statuses; const rs = (s && s.rows) || SEED_TRACKER; return Array.from(new Set(rs.map(r => r.stage).filter(Boolean))); });
+
+  // Brand tabs are filtered views of the master "All Projects" list (one synced
+  // source of truth) — switching sheets only changes which rows are shown, not the data.
   const apiOk = useRef(false);
   const curV = useRef(0);
   const lastSave = useRef(0);
   const applyingRemote = useRef(false);
-  const withIds = (sh) => sh.map(s => ({ ...s, rows: (s.rows || []).map((r, i) => r._id ? r : { ...r, _id: (s.id || "s") + i }) }));
-  const docToSheets = (doc) => {
-    if (!doc) return null;
-    if (doc.sheets) return doc.sheets;
-    if (doc.rows) { const com = { id: "com1", name: "COM-1", cols: (doc.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber"), statuses: doc.statuses || [], rows: doc.rows }; return [com, ...SEED_SHEETS.filter(s => s.name !== "COM-1")]; }
-    return null;
-  };
-  const buildDoc = () => ({ sheets });
-  // Load all sheets from the shared DB on open, then poll for others' changes.
+  const buildDoc = () => ({ rows: data.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses });
+  // Load from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
     let timer, cancelled = false;
     (async () => {
       try {
         const doc = await apiLoad();
         apiOk.current = true;
-        const sh = docToSheets(doc);
-        if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = (doc && doc.v) || 0; }
-        else { const res = await apiSave({ sheets: SEED_SHEETS }); if (res && res.v) curV.current = res.v; }
+        if (doc && doc.rows && doc.rows.length) {
+          applyingRemote.current = true;
+          setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
+          if (doc.cols) setCols(doc.cols);
+          if (doc.statuses) setStatuses(doc.statuses);
+          curV.current = doc.v || 0;
+        } else {
+          // Shared DB is empty (e.g. it was wiped) — restore the full project list from
+          // the seed and push it back so the whole team gets the projects again.
+          const seeded = SEED_TRACKER.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
+          applyingRemote.current = true;
+          setData(seeded);
+          try { const res = await apiSave({ rows: seeded.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses }); if (res && res.v) curV.current = res.v; } catch (e) {}
+        }
       } catch (e) { apiOk.current = false; }
       if (cancelled) return;
       timer = setInterval(async () => {
         if (!apiOk.current) return;
-        try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
+        try {
+          const doc = await apiLoad();
+          if (doc && doc.rows && doc.rows.length && doc.v > curV.current && Date.now() - lastSave.current > 2500) {
+            applyingRemote.current = true;
+            setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
+            if (doc.cols) setCols(doc.cols);
+            if (doc.statuses) setStatuses(doc.statuses);
+            curV.current = doc.v;
+          }
+        } catch (e) {}
       }, 7000);
     })();
     return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
-    saveTracker({ sheets });
+    saveTracker({ cols, rows: data, statuses }, "main");
     if (applyingRemote.current) { applyingRemote.current = false; return; }
     if (!apiOk.current) return;
     const t = setTimeout(async () => {
       try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; } catch (e) {}
     }, 700);
     return () => clearTimeout(t);
-  }, [sheets]);
+  }, [cols, data, statuses]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [person, setPerson] = useState("all");
+  const [personDropOpen, setPersonDropOpen] = useState(false);
+  const [personSearch, setPersonSearch] = useState("");
+  const personDropRef = useRef(null);
   const [dragId, setDragId] = useState(null);
-  const [overId, setOverId] = useState(null);
-  const [colMenu, setColMenu] = useState(false);
   const [selRow, setSelRow] = useState(null);
+  const [overId, setOverId] = useState(null);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp"];
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
+  // Normalize for brand matching: lowercase, strip punctuation/spaces (so "CULVER'S" matches the "Culvers" tab).
+  const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const activeLabel = sheets.find(s => s.id === activeSheet)?.label || "";
+  const brandFilter = activeSheet === "main" ? null : normName(activeLabel);
   const rows = data.filter(r => {
+    if (brandFilter && !normName(r.projectName).includes(brandFilter)) return false;
     if (stage !== "all" && r.stage !== stage) return false;
     if (person !== "all" && !namesIn(r).includes(person)) return false;
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
@@ -2431,7 +2729,7 @@ function TrackerView({ ctx }) {
   const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
   const setStatus = (id, val) => { if (val === "__new") { const n = window.prompt("New status name:"); if (!n || !n.trim()) return; const nm = n.trim(); setStatuses(ss => ss.includes(nm) ? ss : [...ss, nm]); update(id, "stage", nm); return; } update(id, "stage", val); };
-  const addRow = () => setData(ds => [{ _id: "r" + uid() }, ...ds]);
+  const addRow = () => setData(ds => [{ _id: "r" + uid(), ...(activeSheet === "main" ? {} : { projectName: activeLabel }) }, ...ds]);
   const delRow = (id) => setData(ds => ds.filter(r => r._id !== id));
   const dropOnRow = (targetId) => { setData(ds => { if (!dragId || dragId === targetId) return ds; const from = ds.findIndex(r => r._id === dragId); const to = ds.findIndex(r => r._id === targetId); if (from < 0 || to < 0) return ds; const c = [...ds]; const [m] = c.splice(from, 1); c.splice(to, 0, m); return c; }); setDragId(null); setOverId(null); };
   const moveRow = (id, dir) => setData(ds => {
@@ -2440,8 +2738,19 @@ function TrackerView({ ctx }) {
     const a = ds.findIndex(r => r._id === id), b = ds.findIndex(r => r._id === tgt._id);
     const c = [...ds]; [c[a], c[b]] = [c[b], c[a]]; return c;
   });
+  const [showColSettings, setShowColSettings] = useState(false);
+  const [hiddenCols, setHiddenCols] = useState(() => { try { const v = localStorage.getItem("cadence:tracker:hidden"); return v ? JSON.parse(v) : []; } catch { return []; } });
+  const toggleCol = (key) => setHiddenCols(prev => { const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]; localStorage.setItem("cadence:tracker:hidden", JSON.stringify(next)); return next; });
+  const visibleCols = cols.filter(c => !hiddenCols.includes(c.key));
+  useEffect(() => {
+    if (!personDropOpen) return;
+    const handler = (e) => { if (personDropRef.current && !personDropRef.current.contains(e.target)) setPersonDropOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [personDropOpen]);
+
   const addCol = () => { const label = window.prompt("New column name:"); if (!label || !label.trim()) return; setCols(cs => [...cs, { key: "c_" + uid(), label: label.trim(), w: 150 }]); };
-  const delCol = (key) => { const c = cols.find(x => x.key === key); if (!window.confirm(`Delete column "${c ? c.label : ""}" from this sheet? This can't be undone.`)) return; setCols(cs => cs.filter(c => c.key !== key)); };
+  const delCol = (key) => { if (!window.confirm("Delete this column?")) return; setCols(cs => cs.filter(c => c.key !== key)); };
   const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const startResize = (e, key, startW) => {
     e.preventDefault(); e.stopPropagation();
@@ -2459,22 +2768,36 @@ function TrackerView({ ctx }) {
     window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
   };
   const GUT = 46;
-  const cell = { border: "1px solid #d0d7de", padding: "5px 8px", fontSize: 12.5, color: "#1b2330", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "#fff" };
-  const headc = { ...cell, background: "#eef2f7", fontWeight: 700, color: "#16243a", position: "sticky", top: 0, zIndex: 3 };
-  const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "#5a6b85", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
-  const actBtn = { border: "none", background: "transparent", cursor: "pointer", color: "#5a6b85", display: "inline-grid", placeItems: "center", padding: 2 };
+  const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
+  const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
+  const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
+  const actBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", display: "inline-grid", placeItems: "center", padding: 2 };
   return (
     <>
       <div className="head">
         <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
       </div>
-      <div className="panel" style={{ padding: 12, width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)" }}>
-        <div style={{ display: "flex", gap: 4, marginBottom: 10, flexWrap: "wrap", alignItems: "center", borderBottom: "1px solid var(--line)", paddingBottom: 2 }}>
-          {sheets.map((s, i) => (
-            <button key={s.id || i} onClick={() => switchSheet(i)} style={{ border: "1px solid var(--line2)", background: i === active ? "var(--primary)" : "var(--panel2)", color: i === active ? "#fff" : "var(--ink)", borderRadius: "9px 9px 0 0", padding: "7px 14px", fontFamily: "Outfit", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>{s.name}</button>
-          ))}
-          <button onClick={addSheet} title="Add a sheet" style={{ border: "1px dashed var(--line2)", background: "transparent", color: "var(--muted)", borderRadius: 9, padding: "7px 12px", cursor: "pointer", fontWeight: 700 }}>+ Sheet</button>
-        </div>
+      {/* Sheet tabs */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 0, flexWrap: "wrap", borderBottom: "2px solid var(--line)", paddingBottom: 0, justifyContent: "flex-start", width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)" }}>
+        {sheets.map(s => (
+          <div key={s.id} style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            {renamingSheet === s.id ? (
+              <input autoFocus defaultValue={s.label}
+                onBlur={e => renameSheet(s.id, e.target.value.trim() || s.label)}
+                onKeyDown={e => { if (e.key === "Enter") renameSheet(s.id, e.target.value.trim() || s.label); if (e.key === "Escape") setRenamingSheet(null); }}
+                style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 600, border: "1px solid var(--teal)", borderRadius: "8px 8px 0 0", padding: "9px 14px", background: "var(--panel2)", color: "var(--ink)", outline: "none", width: 140 }} />
+            ) : (
+              <button onDoubleClick={() => setRenamingSheet(s.id)} onClick={() => switchSheet(s.id)}
+                style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 600, border: "none", borderRadius: "8px 8px 0 0", padding: "10px 20px", cursor: "pointer", background: activeSheet === s.id ? "var(--panel)" : "var(--panel2)", color: activeSheet === s.id ? "var(--ink)" : "var(--muted)", borderBottom: activeSheet === s.id ? "2px solid var(--primary)" : "2px solid transparent", marginBottom: -2, transition: ".12s" }}>
+                {s.label}
+              </button>
+            )}
+          </div>
+        ))}
+        <button onClick={addSheet} title="Add sheet" style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 700, border: "none", borderRadius: "8px 8px 0 0", padding: "10px 16px", cursor: "pointer", background: "transparent", color: "var(--muted)", marginBottom: -2, transition: ".12s" }}>+ New Sheet</button>
+      </div>
+
+      <div className="panel" style={{ padding: 12, width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)", borderTopLeftRadius: 0 }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 220 }}>
             <Search size={15} style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
@@ -2485,48 +2808,99 @@ function TrackerView({ ctx }) {
             <option value="all">All statuses</option>
             {statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select className="btn" value={person} onChange={e => setPerson(e.target.value)}>
-            {people.map(s => <option key={s} value={s}>{s === "all" ? "All people" : s}</option>)}
-          </select>
+          <div ref={personDropRef} style={{ position: "relative" }}>
+            <button className="btn" onClick={() => { setPersonDropOpen(v => !v); setPersonSearch(""); }}
+              style={{ minWidth: 130, justifyContent: "space-between", gap: 8 }}>
+              <span>{person === "all" ? "All people" : person}</span>
+              <ChevronDown size={13} />
+            </button>
+            {personDropOpen && createPortal(
+              (() => {
+                const bg     = theme === "light" ? "#fff"     : theme === "twilight" ? "#2E2B50" : "#172E4B";
+                const bg2    = theme === "light" ? "#F6F9FD"  : theme === "twilight" ? "#252340" : "#11223A";
+                const border = theme === "light" ? "#C4D0E2"  : theme === "twilight" ? "#423E6E" : "#26456B";
+                const ink    = theme === "light" ? "#16243A"  : theme === "twilight" ? "#E4DEFF" : "#E9EFF7";
+                const muted  = theme === "light" ? "#566884"  : theme === "twilight" ? "#9B94CC" : "#90A2BC";
+                const hover  = theme === "light" ? "#EDF1F8"  : theme === "twilight" ? "#373462" : "#1E3A5C";
+                const accent = "#E03A3E";
+                return (
+                  <div onMouseDown={e => e.stopPropagation()}
+                    style={{ position: "fixed", top: (personDropRef.current?.getBoundingClientRect().bottom ?? 0) + 4, left: personDropRef.current?.getBoundingClientRect().left ?? 0, zIndex: 9999, background: bg, border: `1px solid ${border}`, borderRadius: 10, boxShadow: "0 10px 30px rgba(0,0,0,.35)", width: 220, overflow: "hidden" }}>
+                    <div style={{ padding: "8px 8px 4px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, background: bg2, border: `1px solid ${border}`, borderRadius: 7, padding: "5px 9px" }}>
+                        <Search size={13} style={{ color: muted, flexShrink: 0 }} />
+                        <input autoFocus value={personSearch} onChange={e => setPersonSearch(e.target.value)}
+                          placeholder="Search people…"
+                          style={{ background: "none", border: "none", outline: "none", fontFamily: "Outfit", fontSize: 13, color: ink, width: "100%" }} />
+                      </div>
+                    </div>
+                    <div style={{ maxHeight: 240, overflowY: "auto", padding: "4px 6px 8px" }}>
+                      {people
+                        .filter(s => s === "all" || s.toLowerCase().includes(personSearch.toLowerCase()))
+                        .map(s => (
+                          <div key={s} onClick={() => { setPerson(s); setPersonDropOpen(false); setPersonSearch(""); }}
+                            style={{ padding: "7px 10px", borderRadius: 7, cursor: "pointer", fontSize: 13, fontWeight: s === person ? 700 : 400, color: s === person ? accent : ink, background: s === person ? hover : "transparent" }}
+                            onMouseEnter={e => e.currentTarget.style.background = hover}
+                            onMouseLeave={e => e.currentTarget.style.background = s === person ? hover : "transparent"}>
+                            {s === "all" ? "All people" : s}
+                          </div>
+                        ))}
+                      {people.filter(s => s === "all" || s.toLowerCase().includes(personSearch.toLowerCase())).length === 0 &&
+                        <div style={{ padding: "8px 10px", fontSize: 13, color: muted }}>No match</div>}
+                    </div>
+                  </div>
+                );
+              })(),
+              document.body
+            )}
+          </div>
           <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {data.length} projects</span>
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
           <div style={{ position: "relative" }}>
-            <button className="btn btn-sm" onClick={() => setColMenu(o => !o)}><Settings size={14} />Columns</button>
-            {colMenu && (
-              <div style={{ position: "absolute", right: 0, top: 38, zIndex: 60, background: "var(--panel2)", border: "1px solid var(--line2)", borderRadius: 12, padding: 8, width: 230, maxHeight: 340, overflow: "auto", boxShadow: "0 16px 40px rgba(0,0,0,.4)" }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--dim)", padding: "4px 8px", textTransform: "uppercase", letterSpacing: ".5px" }}>Show columns</div>
-                {cols.map(c => (
-                  <label key={c.key} style={{ display: "flex", alignItems: "center", gap: 9, padding: "6px 8px", fontSize: 13, cursor: "pointer", borderRadius: 8 }}>
-                    <input type="checkbox" checked={!c.hidden} onChange={() => toggleCol(c.key)} />{c.label}
-                  </label>
-                ))}
+            <button className="btn btn-sm" onClick={() => setShowColSettings(v => !v)} title="Show/hide columns" style={{ gap: 6 }}>
+              <Settings size={14} />{hiddenCols.length > 0 && <span style={{ background: "var(--primary)", color: "#fff", borderRadius: 99, fontSize: 10, fontWeight: 700, padding: "1px 5px" }}>{hiddenCols.length}</span>}Columns
+            </button>
+            {showColSettings && (
+              <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 50, background: "var(--panel2)", border: "1px solid var(--line2)", borderRadius: 14, padding: "10px 12px", minWidth: 200, boxShadow: "0 16px 40px rgba(0,0,0,.45)" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".6px", marginBottom: 8 }}>Show / Hide Columns</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 320, overflowY: "auto" }}>
+                  {cols.map(c => (
+                    <label key={c.key} style={{ display: "flex", alignItems: "center", gap: 9, cursor: "pointer", padding: "5px 6px", borderRadius: 8, background: hiddenCols.includes(c.key) ? "transparent" : "var(--raise)" }}>
+                      <input type="checkbox" checked={!hiddenCols.includes(c.key)} onChange={() => toggleCol(c.key)} style={{ accentColor: "var(--primary)", width: 14, height: 14, cursor: "pointer" }} />
+                      <span style={{ fontSize: 13.5, fontWeight: 500, color: hiddenCols.includes(c.key) ? "var(--dim)" : "var(--ink)" }}>{c.label}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--line)", display: "flex", gap: 6 }}>
+                  <button className="btn btn-sm" style={{ flex: 1, justifyContent: "center", fontSize: 12 }} onClick={() => setHiddenCols([]) || localStorage.removeItem("cadence:tracker:hidden")}>Show all</button>
+                  <button className="btn btn-sm" style={{ fontSize: 12 }} onClick={() => setShowColSettings(false)}>Done</button>
+                </div>
               </div>
             )}
           </div>
         </div>
-        <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:5px 8px;outline:none;}
-.trk-table input:focus{background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;border-radius:2px;}
+        <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:5px 8px;outline:none;}
+.trk-table input:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
 .trk-gut{cursor:grab;}
 .trk-role{padding:4px 8px;line-height:1.55;cursor:default;min-height:26px;}
-.trk-role a{color:#2563c9;text-decoration:none;}
+.trk-role a{color:var(--teal);text-decoration:none;}
 .trk-role a:hover{text-decoration:underline;}
-.trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:#fff7cc;box-shadow:inset 0 0 0 2px #2563c9;font-family:'Outfit';font-size:12.5px;color:#1b2330;padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
-        <div style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid #d0d7de", borderRadius: 8 }}>
-          <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "#fff" }}>
+.trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
+        <div style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid var(--line)", borderRadius: 8 }}>
+          <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
             <thead>
               <tr>
-                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "#e3e8ef" }}></th>
-                {visCols.map((c, ci) => (
+                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}></th>
+                {visibleCols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: GUT, zIndex: 5 } : {}) }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
-                      <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === visCols.length - 1} style={colBtn}>›</button>
+                      <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === visibleCols.length - 1} style={colBtn}>›</button>
                     </div>
-                    <button title="Delete column" onClick={() => delCol(c.key)} style={{ position: "absolute", top: 1, right: 8, border: "none", background: "transparent", color: "#caa", fontSize: 11, lineHeight: 1, cursor: "pointer", padding: "1px 2px" }}>×</button>
                     <div onMouseDown={e => startResize(e, c.key, c.w)} title="Drag to resize column" style={{ position: "absolute", top: 0, right: 0, width: 6, height: "100%", cursor: "col-resize", userSelect: "none" }} />
                   </th>
                 ))}
@@ -2537,22 +2911,20 @@ function TrackerView({ ctx }) {
             <tbody>
               {rows.map((r, ri) => {
                 const em = rowEmails(r);
-                const isSel = selRow === r._id;
-                const hl = "#fff3bf";
                 return (
                 <tr key={r._id || ri}
                   onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
-                  style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: isSel ? "inset 0 0 0 2px #f0b400" : (overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none") }}>
+                  style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
-                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title="Click to highlight · drag to reorder"
-                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: isSel ? hl : "#f3f5f9", color: "#6b7a92", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
-                  {visCols.map(c => {
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title="Click to highlight this row · drag to reorder"
+                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: selRow === r._id ? "rgba(79,168,232,0.18)" : "var(--panel2)", color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
+                  {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     return (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, background: isSel ? hl : "#fff", ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1 } : {}) }}>
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "var(--panel)" } : {}), ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
                       {isRole ? (
-                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} />
+                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} />
                       ) : c.key === "stage" ? (
                         <select className="trk-status" value={r.stage || ""} onChange={e => setStatus(r._id, e.target.value)}
                           style={{ color: r.stage ? statusColor(r.stage) : "#9aa6b6", background: r.stage ? statusColor(r.stage) + "1f" : "transparent" }}>
@@ -2567,14 +2939,14 @@ function TrackerView({ ctx }) {
                     </td>
                     );
                   })}
-                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64, background: isSel ? hl : "#fff" }}>
+                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64, ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
                     <button title={em.length ? `Email team (${em.length})` : "No team emails"} disabled={!em.length}
                       onClick={() => emailTeam(r)}
                       style={{ border: "none", background: "transparent", cursor: em.length ? "pointer" : "not-allowed", color: em.length ? "#2563c9" : "#c2c8d0", display: "grid", placeItems: "center", width: "100%" }}>
                       <Mail size={15} />
                     </button>
                   </td>
-                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px", background: isSel ? hl : "#fff" }}>
+                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px", ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
                     <button title="Move up" onClick={() => moveRow(r._id, -1)} style={actBtn}><ChevronUp size={15} /></button>
                     <button title="Move down" onClick={() => moveRow(r._id, 1)} style={actBtn}><ChevronDown size={15} /></button>
                     <button title="Delete row" onClick={() => { if (window.confirm("Delete this row?")) delRow(r._id); }} style={{ ...actBtn, color: "#c0392b" }}><Trash2 size={14} /></button>
@@ -2582,11 +2954,11 @@ function TrackerView({ ctx }) {
                 </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={visCols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>{brandFilter ? `No projects with "${activeLabel}" in the name yet.` : "No projects match."}</td></tr>}
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Click a row number to highlight it (meeting tracking) · drag it to reorder · double-click a role cell to edit · "Columns" shows/hides fields · names link to email.</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Names link to email (click to send); double-click a role cell to edit (one name per line) · drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown.</div>
       </div>
     </>
   );
