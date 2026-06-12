@@ -25,6 +25,10 @@ function teamEmails(r) {
 const FIXED_CC = "john.wolfe@rtmec.com,andrew.gustafson@rtmec.com,madison.huschak@rtmec.com";
 
 export default async function handler(req, res) {
+  // Auth: Power Automate must send header  x-api-key: <RELAY_API_KEY>
+  const key = process.env.RELAY_API_KEY;
+  if (!key) return res.status(500).json({ error: "RELAY_API_KEY not configured" });
+  if (req.headers["x-api-key"] !== key) return res.status(401).json({ error: "unauthorized" });
   try {
     const rows = await sql`select doc from tracker_doc where id = 1`;
     const doc = rows.length ? rows[0].doc : {};
