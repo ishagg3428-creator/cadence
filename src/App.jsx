@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
+import { SEED_SHEETS } from "./sheetsData.js";
 import { apiLoad, apiSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
@@ -2639,49 +2640,27 @@ const TRACKER_COLS = [
 ];
 function TrackerView({ ctx }) {
   const { effLight, theme } = ctx;
-  const [sheets, setSheets] = useState(() => loadSheets());
-  const [activeSheet, setActiveSheet] = useState("main");
-  const [renamingSheet, setRenamingSheet] = useState(null);
-
-  const switchSheet = (id) => {
-    // save current sheet before switching
-    setActiveSheet(id);
-  };
-
-  const addSheet = () => {
-    const label = window.prompt("Sheet name:");
-    if (!label || !label.trim()) return;
-    const id = "sheet_" + uid();
-    const next = [...sheets, { id, label: label.trim() }];
-    setSheets(next);
-    saveSheets(next);
-    setActiveSheet(id);
-  };
-
-  const deleteSheet = (id) => {
-    if (sheets.length <= 1) { alert("Can't delete the last sheet."); return; }
-    if (!window.confirm(`Delete sheet "${sheets.find(s => s.id === id)?.label}"?`)) return;
-    try { localStorage.removeItem(sheetKey(id)); } catch (e) {}
-    const next = sheets.filter(s => s.id !== id);
-    setSheets(next);
-    saveSheets(next);
-    if (activeSheet === id) setActiveSheet(next[0].id);
-  };
-
-  const renameSheet = (id, label) => {
-    const next = sheets.map(s => s.id === id ? { ...s, label } : s);
-    setSheets(next);
-    saveSheets(next);
-    setRenamingSheet(null);
-  };
-
-  const [data, setData] = useState(() => {
-    const s = loadTracker(activeSheet);
-    const rs = (s && s.rows && s.rows.length) ? s.rows : (activeSheet === "main" ? SEED_TRACKER : []);
-    return rs.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
+  // All sheets are held in state together and synced as one document — each sheet
+  // (COM-1, Culvers, Costco, ALDI) keeps its own rows, columns and statuses.
+  const [sheets, setSheets] = useState(() => {
+    try { const v = localStorage.getItem(SHEETS_KEY); if (v) { const p = JSON.parse(v); if (Array.isArray(p) && p.length && p[0].rows) return p; } } catch (e) {}
+    return SEED_SHEETS;
   });
-  const [cols, setCols] = useState(() => { const s = loadTracker(activeSheet); return ((s && s.cols) || TRACKER_COLS).filter(c => c.key !== "rowNumber"); });
-  const [statuses, setStatuses] = useState(() => { const s = loadTracker(activeSheet); if (s && s.statuses) return s.statuses; const rs = (s && s.rows) || SEED_TRACKER; return Array.from(new Set(rs.map(r => r.stage).filter(Boolean))); });
+  const [activeSheet, setActiveSheet] = useState(() => (SEED_SHEETS[0] && SEED_SHEETS[0].id) || "com1");
+  const [renamingSheet, setRenamingSheet] = useState(null);
+  const sheetObj = sheets.find(s => s.id === activeSheet) || sheets[0] || { id: "com1", name: "COM-1", rows: [], cols: [], statuses: [] };
+  const data = (sheetObj.rows || []).map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
+  const cols = (sheetObj.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber");
+  const statuses = sheetObj.statuses || [];
+  const activeLabel = sheetObj.name || sheetObj.label || "";
+  const patchSheet = (fn) => setSheets(ss => ss.map(s => s.id === activeSheet ? { ...s, ...fn(s) } : s));
+  const setData = (v) => patchSheet(s => ({ rows: typeof v === "function" ? v((s.rows || []).map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) })) : v }));
+  const setCols = (v) => patchSheet(s => ({ cols: typeof v === "function" ? v((s.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber")) : v }));
+  const setStatuses = (v) => patchSheet(s => ({ statuses: typeof v === "function" ? v(s.statuses || []) : v }));
+  const switchSheet = (id) => setActiveSheet(id);
+  const addSheet = () => { const label = window.prompt("Sheet name:"); if (!label || !label.trim()) return; const id = "sheet_" + uid(); setSheets(ss => [...ss, { id, name: label.trim(), cols: [{ key: "projectName", label: "Project Name", w: 260, sticky: true }, { key: "stage", label: "Stage", w: 170 }], statuses: [], rows: [] }]); setActiveSheet(id); };
+  const deleteSheet = (id) => { if (sheets.length <= 1) { alert("Can't delete the last sheet."); return; } const s = sheets.find(x => x.id === id); if (!window.confirm(`Delete sheet "${s ? (s.name || s.label) : ""}"?`)) return; const next = sheets.filter(x => x.id !== id); setSheets(next); if (activeSheet === id) setActiveSheet(next[0].id); };
+  const renameSheet = (id, label) => { setSheets(ss => ss.map(s => s.id === id ? { ...s, name: label } : s)); setRenamingSheet(null); };
 
   // Brand tabs are filtered views of the master "All Projects" list (one synced
   // source of truth) — switching sheets only changes which rows are shown, not the data.
@@ -2690,50 +2669,37 @@ function TrackerView({ ctx }) {
   const lastSave = useRef(0);
   const applyingRemote = useRef(false);
   const hydrated = useRef(false); // true once the DB's authoritative copy has loaded — guards against pushing a stale local cache up
-  const buildDoc = () => ({ rows: data.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses });
-  // Load from the shared DB on open, then poll for others' changes (near real-time).
+  const buildDoc = () => ({ sheets: sheets.map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
+  const withIds = (sh) => sh.map(s => ({ ...s, rows: (s.rows || []).map((r, i) => r._id ? r : { ...r, _id: (s.id || "s") + i }) }));
+  const docToSheets = (doc) => {
+    if (!doc) return null;
+    if (doc.sheets && doc.sheets.length) return doc.sheets;
+    if (doc.rows && doc.rows.length) { const com = { id: "com1", name: "COM-1", cols: (doc.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber"), statuses: doc.statuses || [], rows: doc.rows }; return [com, ...SEED_SHEETS.filter(s => s.id !== "com1")]; }
+    return null;
+  };
+  // Load all sheets from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
     let timer, cancelled = false;
     (async () => {
       try {
         const doc = await apiLoad();
         apiOk.current = true;
-        if (doc && doc.rows && doc.rows.length) {
-          applyingRemote.current = true;
-          setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
-          if (doc.cols) setCols(doc.cols);
-          if (doc.statuses) setStatuses(doc.statuses);
-          curV.current = doc.v || 0;
-        } else {
-          // Shared DB is empty (e.g. it was wiped) — restore the full project list from
-          // the seed and push it back so the whole team gets the projects again.
-          const seeded = SEED_TRACKER.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
-          applyingRemote.current = true;
-          setData(seeded);
-          try { const res = await apiSave({ rows: seeded.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses }); if (res && res.v) curV.current = res.v; } catch (e) {}
-        }
+        const sh = docToSheets(doc);
+        if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = (doc && doc.v) || 0; }
+        else { const res = await apiSave({ sheets: SEED_SHEETS }); if (res && res.v) curV.current = res.v; }
       } catch (e) { apiOk.current = false; }
       hydrated.current = true;
       if (cancelled) return;
       timer = setInterval(async () => {
         if (!apiOk.current) return;
-        try {
-          const doc = await apiLoad();
-          if (doc && doc.rows && doc.rows.length && doc.v > curV.current && Date.now() - lastSave.current > 2500) {
-            applyingRemote.current = true;
-            setData(doc.rows.map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) }));
-            if (doc.cols) setCols(doc.cols);
-            if (doc.statuses) setStatuses(doc.statuses);
-            curV.current = doc.v;
-          }
-        } catch (e) {}
+        try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
       }, 7000);
     })();
     return () => { cancelled = true; if (timer) clearInterval(timer); };
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
-    saveTracker({ cols, rows: data, statuses }, "main");
+    try { localStorage.setItem(SHEETS_KEY, JSON.stringify(sheets)); } catch (e) {}
     if (!hydrated.current) return; // never push to the shared DB before we've loaded its copy (stops a stale local cache from overwriting it)
     if (applyingRemote.current) { applyingRemote.current = false; return; }
     if (!apiOk.current) return;
@@ -2741,7 +2707,7 @@ function TrackerView({ ctx }) {
       try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; } catch (e) {}
     }, 700);
     return () => clearTimeout(t);
-  }, [cols, data, statuses]);
+  }, [sheets]);
   const [q, setQ] = useState("");
   const [stage, setStage] = useState("all");
   const [person, setPerson] = useState("all");
@@ -2757,10 +2723,7 @@ function TrackerView({ ctx }) {
   const ql = q.trim().toLowerCase();
   // Normalize for brand matching: lowercase, strip punctuation/spaces (so "CULVER'S" matches the "Culvers" tab).
   const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const activeLabel = sheets.find(s => s.id === activeSheet)?.label || "";
-  const brandFilter = activeSheet === "main" ? null : normName(activeLabel);
   const rows = data.filter(r => {
-    if (brandFilter && !normName(r.projectName).includes(brandFilter)) return false;
     if (stage !== "all" && r.stage !== stage) return false;
     if (person !== "all" && !namesIn(r).includes(person)) return false;
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
@@ -2770,7 +2733,7 @@ function TrackerView({ ctx }) {
   const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
   const setStatus = (id, val) => { if (val === "__new") { const n = window.prompt("New status name:"); if (!n || !n.trim()) return; const nm = n.trim(); setStatuses(ss => ss.includes(nm) ? ss : [...ss, nm]); update(id, "stage", nm); return; } update(id, "stage", val); };
-  const addRow = () => setData(ds => [{ _id: "r" + uid(), ...(activeSheet === "main" ? {} : { projectName: activeLabel }) }, ...ds]);
+  const addRow = () => setData(ds => [{ _id: "r" + uid() }, ...ds]);
   const delRow = (id) => setData(ds => ds.filter(r => r._id !== id));
   const dropOnRow = (targetId) => { setData(ds => { if (!dragId || dragId === targetId) return ds; const from = ds.findIndex(r => r._id === dragId); const to = ds.findIndex(r => r._id === targetId); if (from < 0 || to < 0) return ds; const c = [...ds]; const [m] = c.splice(from, 1); c.splice(to, 0, m); return c; }); setDragId(null); setOverId(null); };
   const moveRow = (id, dir) => setData(ds => {
@@ -2823,14 +2786,14 @@ function TrackerView({ ctx }) {
         {sheets.map(s => (
           <div key={s.id} style={{ position: "relative", display: "flex", alignItems: "center" }}>
             {renamingSheet === s.id ? (
-              <input autoFocus defaultValue={s.label}
-                onBlur={e => renameSheet(s.id, e.target.value.trim() || s.label)}
-                onKeyDown={e => { if (e.key === "Enter") renameSheet(s.id, e.target.value.trim() || s.label); if (e.key === "Escape") setRenamingSheet(null); }}
+              <input autoFocus defaultValue={s.name}
+                onBlur={e => renameSheet(s.id, e.target.value.trim() || s.name)}
+                onKeyDown={e => { if (e.key === "Enter") renameSheet(s.id, e.target.value.trim() || s.name); if (e.key === "Escape") setRenamingSheet(null); }}
                 style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 600, border: "1px solid var(--teal)", borderRadius: "8px 8px 0 0", padding: "9px 14px", background: "var(--panel2)", color: "var(--ink)", outline: "none", width: 140 }} />
             ) : (
               <button onDoubleClick={() => setRenamingSheet(s.id)} onClick={() => switchSheet(s.id)}
                 style={{ fontFamily: "Outfit", fontSize: 15, fontWeight: 600, border: "none", borderRadius: "8px 8px 0 0", padding: "10px 20px", cursor: "pointer", background: activeSheet === s.id ? "var(--panel)" : "var(--panel2)", color: activeSheet === s.id ? "var(--ink)" : "var(--muted)", borderBottom: activeSheet === s.id ? "2px solid var(--primary)" : "2px solid transparent", marginBottom: -2, transition: ".12s" }}>
-                {s.label}
+                {s.name}
               </button>
             )}
           </div>
@@ -2995,7 +2958,7 @@ function TrackerView({ ctx }) {
                 </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>{brandFilter ? `No projects with "${activeLabel}" in the name yet.` : "No projects match."}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
             </tbody>
           </table>
         </div>
