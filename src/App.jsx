@@ -9,6 +9,7 @@ import {
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { apiLoad, apiSave } from "./trackerApi.js";
+import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
  *  Cadence — dark team dashboard
@@ -895,6 +896,9 @@ const genCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 const genCodes = () => { const viewerCode = genCode(); let editorCode = genCode(); while (editorCode === viewerCode) editorCode = genCode(); return { viewerCode, editorCode }; };
 const viewerCodeOf = (p) => (p && (p.viewerCode || p.code)) || "";
 const editorCodeOf = (p) => (p && p.editorCode) || "";
+// What gets uploaded to the shared store when a project is published — strip per-user fields.
+const publishableProject = (p) => { const { myRole, invited, invitedAs, invitedEmail, deleted, deletedAt, ...rest } = p; return rest; };
+const codeRoleFor = (p, code) => editorCodeOf(p).toUpperCase() === code ? "editor" : viewerCodeOf(p).toUpperCase() === code ? "viewer" : null;
 const BG_PRESETS = [
   { name: "None", css: "" },
   { name: "Red", css: "rgba(224,58,62,.30)" },
@@ -986,7 +990,79 @@ function GanttView({ ctx }) {
   const softDelete = (pid) => patchProject(pid, { deleted: true, deletedAt: Date.now() });
   const restoreProject = (pid) => patchProject(pid, { deleted: false, deletedAt: null });
   const purgeProject = (pid) => setProjects(ps => ps.filter(p => p.id !== pid));
-  const tryJoin = () => { const c = joinCode.trim().toUpperCase(); if (!c) return; let role = null; const hit = gd.projects.find(p => { if (editorCodeOf(p).toUpperCase() === c) { role = "editor"; return true; } if (viewerCodeOf(p).toUpperCase() === c) { role = "viewer"; return true; } return false; }); if (hit) { setJoinErr(""); setJoinCode(""); setJoined({ name: hit.name, role }); setTimeout(() => setJoined(null), 2600); bumpOpen(hit.id); setOpenId(hit.id); setWhoFilter("all"); } else { setJoinErr("No project with that code (demo)."); } };
+  const openJoined = (pid) => { bumpOpen(pid); setOpenId(pid); setWhoFilter("all"); };
+  const tryJoin = async () => {
+    const c = joinCode.trim().toUpperCase(); if (!c) return;
+    // Already in this browser? Open it (and switch role if a different code was used).
+    let role = null;
+    const hit = gd.projects.find(p => { role = codeRoleFor(p, c); return !!role; });
+    if (hit) {
+      if (hit.myRole === "owner") { setJoinErr(""); setJoinCode(""); openJoined(hit.id); return; } // your own project — just open it
+      if (hit.myRole !== role) setProjects(ps => ps.map(p => p.id === hit.id ? { ...p, myRole: role } : p));
+      setJoinErr(""); setJoinCode(""); setJoined({ name: hit.name, role });
+      setTimeout(() => setJoined(null), 2600); openJoined(hit.id);
+      return;
+    }
+    // Look it up in the shared store (projects published by their owners).
+    setJoinErr("Checking code…");
+    try {
+      const doc = await ganttLoad();
+      let r2 = null;
+      const remote = Object.values((doc && doc.projects) || {}).find(p => { r2 = codeRoleFor(p, c); return !!r2; });
+      if (!remote) { setJoinErr("No project with that code."); return; }
+      setProjects(ps => [...ps.filter(p => p.id !== remote.id), { ...remote, myRole: r2 }]);
+      setJoinErr(""); setJoinCode(""); setJoined({ name: remote.name, role: r2 });
+      setTimeout(() => setJoined(null), 2600); openJoined(remote.id);
+    } catch (e) {
+      setJoinErr("Can't reach the sharing server right now.");
+    }
+  };
+  // Publish shareable projects (owner always; editors when their copy is newer) so codes work across devices.
+  const applyingShared = useRef(false);
+  useEffect(() => {
+    if (applyingShared.current) { applyingShared.current = false; return; }
+    const t = setTimeout(async () => {
+      const ps = gdRef.current.projects;
+      if (!ps.some(p => p.myRole !== "viewer" && (viewerCodeOf(p) || editorCodeOf(p)))) return;
+      try {
+        const doc = (await ganttLoad()) || {};
+        const shared = doc.projects || {};
+        let changed = false;
+        for (const p of ps) {
+          if (p.myRole === "viewer" || !(viewerCodeOf(p) || editorCodeOf(p))) continue;
+          if (p.deleted) { if (p.myRole === "owner" && shared[p.id]) { delete shared[p.id]; changed = true; } continue; }
+          const cur = shared[p.id];
+          const shouldWrite = p.myRole === "owner" ? (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) : (!cur ? false : (p.updatedAt || 0) > (cur.updatedAt || 0));
+          if (shouldWrite) { shared[p.id] = publishableProject(p); changed = true; }
+        }
+        if (changed) await ganttSave({ projects: shared });
+      } catch (e) {}
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [gd.projects]);
+  // Poll the shared store so joined projects receive the owner's updates.
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      try {
+        const doc = await ganttLoad();
+        if (stop || !doc || !doc.projects) return;
+        const cur = gdRef.current.projects;
+        let changed = false;
+        const next = cur.map(p => {
+          if (p.myRole === "owner" || p.deleted) return p;
+          const sh = doc.projects[p.id];
+          if (!sh || (sh.updatedAt || 0) <= (p.updatedAt || 0)) return p;
+          changed = true;
+          return { ...sh, myRole: p.myRole };
+        });
+        if (changed) { applyingShared.current = true; setGd(g => ({ ...g, projects: next })); }
+      } catch (e) {}
+    };
+    tick();
+    const iv = setInterval(tick, 8000);
+    return () => { stop = true; clearInterval(iv); };
+  }, []);
   const [hoverGid, setHoverGid] = useState(null);
   const [hoverPos, setHoverPos] = useState({ x: 0, y: 0 });
   const [dragTip, setDragTip] = useState(null);
@@ -1028,12 +1104,21 @@ function GanttView({ ctx }) {
   useEffect(() => { if (!openId) return; const p = gdRef.current.projects.find(x => x.id === openId); if (p && p.invited) setGd(g => ({ ...g, projects: g.projects.map(x => x.id === openId ? { ...x, invited: false } : x) })); }, [openId]);
 
   const setProjects = (fn) => { setHistory(h => [...h.slice(-29), gdRef.current.projects]); setGd(g => ({ ...g, projects: fn(g.projects) })); };
-  const patchProject = (pid, patch) => setProjects(ps => ps.map(p => p.id === pid ? { ...p, ...patch, updatedAt: Date.now() } : p));
-  const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => p.id !== pid ? p : { ...p, updatedAt: Date.now(), groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
+  // Viewers are read-only: they can only remove the project from their own list (deleted/deletedAt).
+  const patchProject = (pid, patch) => setProjects(ps => ps.map(p => {
+    if (p.id !== pid) return p;
+    if (p.myRole === "viewer") {
+      const allowed = {};
+      ["deleted", "deletedAt"].forEach(k => { if (k in patch) allowed[k] = patch[k]; });
+      return Object.keys(allowed).length ? { ...p, ...allowed } : p;
+    }
+    return { ...p, ...patch, updatedAt: Date.now() };
+  }));
+  const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => (p.id !== pid || p.myRole === "viewer") ? p : { ...p, updatedAt: Date.now(), groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
   const addProject = () => { const id = uid(); const ts = Date.now(); setProjects(ps => [...ps, { id, name: "New project", color: PALETTE[ps.length % PALETTE.length], due: addDays(todayISO(), 30), start: todayISO(), myRole: "owner", ...genCodes(), codeCadence: "month", cascade: false, createdAt: ts, updatedAt: ts, groups: [] }]); setOpenId(id); setEdit({ pid: id }); };
   const delProject = (pid) => { setProjects(ps => ps.filter(p => p.id !== pid)); setEdit(null); setOpenId(null); };
-  const addGroup = (pid) => { const id = uid(); const p = gdRef.current.projects.find(x => x.id === pid); const used = new Set((p ? p.groups : []).map(g => g.color)); const color = PALETTE.find(c => !used.has(c)) || PALETTE[(p ? p.groups.length : 0) % PALETTE.length]; setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: [...x.groups, { id, name: "New group", color, desc: "", start: todayISO(), end: addDays(todayISO(), 5), members: [] }] })); setEdit({ pid, gid: id }); };
-  const delGroup = (pid, gid) => { const p = gdRef.current.projects.find(x => x.id === pid); let next = { pid }; if (p) { const idx = p.groups.findIndex(g => g.id === gid); const remaining = p.groups.filter(g => g.id !== gid); if (remaining.length) next = { pid, gid: remaining[Math.max(0, idx - 1)].id }; } setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: x.groups.filter(g => g.id !== gid) })); setEdit(next); };
+  const addGroup = (pid) => { const id = uid(); const p = gdRef.current.projects.find(x => x.id === pid); if (p && p.myRole === "viewer") return; const used = new Set((p ? p.groups : []).map(g => g.color)); const color = PALETTE.find(c => !used.has(c)) || PALETTE[(p ? p.groups.length : 0) % PALETTE.length]; setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: [...x.groups, { id, name: "New group", color, desc: "", start: todayISO(), end: addDays(todayISO(), 5), members: [] }] })); setEdit({ pid, gid: id }); };
+  const delGroup = (pid, gid) => { const p = gdRef.current.projects.find(x => x.id === pid); if (p && p.myRole === "viewer") return; let next = { pid }; if (p) { const idx = p.groups.findIndex(g => g.id === gid); const remaining = p.groups.filter(g => g.id !== gid); if (remaining.length) next = { pid, gid: remaining[Math.max(0, idx - 1)].id }; } setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: x.groups.filter(g => g.id !== gid) })); setEdit(next); };
   const toggleMember = (pid, gid, mid) => patchGroup(pid, gid, gr => ({ ...gr, members: gr.members.map(m => m.id === mid ? { ...m, done: !m.done } : m) }));
   const addMember = (pid, gid, person) => patchGroup(pid, gid, gr => gr.members.some(m => m.id === person.id) ? gr : ({ ...gr, members: [...gr.members, { id: person.id, name: person.name, color: person.color, done: false }] }));
   const removeMember = (pid, gid, mid) => patchGroup(pid, gid, gr => ({ ...gr, members: gr.members.filter(m => m.id !== mid) }));
@@ -1073,7 +1158,7 @@ function GanttView({ ctx }) {
                 <input value={joinCode} onChange={e => { setJoinCode(e.target.value); setJoinErr(""); }} onKeyDown={e => e.key === "Enter" && tryJoin()} placeholder="Join with a code" style={{ width: 130, fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", border: "1px solid var(--line2)", borderRadius: 10, padding: "8px 11px", background: "var(--panel)", outline: "none", textTransform: "uppercase" }} />
                 <button className="btn" onClick={tryJoin}>Join</button>
               </div>
-              <div style={{ fontSize: 10.5, color: joinErr ? "var(--primary)" : "var(--dim)", marginTop: 3, textAlign: "center" }}>{joinErr || "demo · try CLV24"}</div>
+              <div style={{ fontSize: 10.5, color: joinErr ? "var(--primary)" : "var(--dim)", marginTop: 3, textAlign: "center" }}>{joinErr || "Enter a project's viewer or editor code"}</div>
             </div>
             {gd.projects.some(p => p.deleted) && <button className="btn" onClick={() => setOpenId("__trash__")}><Trash2 size={15} />Trash ({gd.projects.filter(p => p.deleted).length})</button>}
             <button className="btn btn-pri" onClick={addProject}><Plus size={16} />New project</button>
@@ -1456,7 +1541,7 @@ ${rows}</div></div>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {canOpen && proj.codeCadence !== "off" && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--teal)", background: "rgba(79,168,232,.14)", border: "1px solid #4FA8E855", borderRadius: 8, padding: "4px 9px", letterSpacing: "1px" }} title="Viewer invite code (demo)">#{viewerCodeOf(proj)}</span>}
+              {canOpen && proj.codeCadence !== "off" && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--teal)", background: "rgba(79,168,232,.14)", border: "1px solid #4FA8E855", borderRadius: 8, padding: "4px 9px", letterSpacing: "1px" }} title="Viewer invite code — teammates can join with this">#{viewerCodeOf(proj)}</span>}
               <span style={{ fontSize: 12, fontWeight: 700, color: ROLE_C[role], background: ROLE_C[role] + "22", border: `1px solid ${ROLE_C[role]}55`, borderRadius: 99, padding: "5px 12px", textTransform: "capitalize" }}>You're {role}</span>
               {/* demo presence: your avatar, hover for everyone */}
               <div className="pres dotwrap" style={{ position: "relative" }} onMouseEnter={() => setPresOpen(true)} onMouseLeave={() => setPresOpen(false)}>
@@ -1740,7 +1825,7 @@ ${rows}</div></div>
                   </label>}
                 </div></div>
                 <div style={{ marginTop: 8, padding: 11, background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 7 }}>Invite code <span style={{ color: "var(--dim)", fontWeight: 600 }}>· demo</span></div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".5px", marginBottom: 7 }}>Invite code</div>
                   {editTarget.p.codeCadence === "off" ? (
                     <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Joining is off — no one can join with a code.</div>
                   ) : (
@@ -1763,7 +1848,7 @@ ${rows}</div></div>
                       </select>
                     </div>
                   )}
-                  <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7 }}>The viewer code joins read-only; the editor code can make changes. (Real joining turns on with accounts.)</div>
+                  <div style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 7 }}>Share a code with a teammate — they enter it in "Join with a code" on their device. Viewer code = read-only; editor code = can edit.</div>
                 </div>
                 <div className="foot-note" style={{ justifyContent: "flex-start", marginTop: 12 }}>Add or delete groups from the timeline (the <b style={{ color: "var(--ink)", margin: "0 3px" }}>+ Group</b> button). Delete the whole project from the project card.</div>
               </>
