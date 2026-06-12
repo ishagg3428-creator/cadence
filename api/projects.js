@@ -45,6 +45,7 @@ export default async function handler(req, res) {
       (s.rows || []).forEach((r, i) => {
         const name = r.projectName || r.name || "";
         if (!name) return;
+        // Culvers + Costco relay to the fixed trio; COM-1 (and any other) emails its real team.
         const team = (nm.includes("culver") || nm.includes("costco")) ? FIXED_CC : teamEmails(r).join(",");
         out.push({
           id: (s.name || "S") + "::" + (r._id || i),
