@@ -2366,7 +2366,7 @@ const CALKEY = "cadence:caldnotes:v1";
 function loadCalNotes() { try { const v = localStorage.getItem(CALKEY); if (v) return JSON.parse(v); } catch (e) {} return {}; }
 function saveCalNotes(n) { try { localStorage.setItem(CALKEY, JSON.stringify(n)); } catch (e) {} }
 /* ---------------- Tracker (Excel-style sheet) ---------------- */
-const TRACKER_KEY = "cadence:tracker:v2";
+const TRACKER_KEY = "cadence:tracker:v3"; // v3: re-seeded from the 2026-06-12 Excel export (COM-1 + Culvers + Costco + ALDI)
 const SHEETS_KEY = "cadence:tracker:sheets:v1";
 const DEFAULT_SHEETS = [
   { id: "main", label: "All Projects" },
