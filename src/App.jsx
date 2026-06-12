@@ -2759,6 +2759,7 @@ function TrackerView({ ctx }) {
     const nm = c ? (c.label || "this column") : "this column";
     if (!window.confirm(`Delete the "${nm}" column?\n\nThis removes it from every row in this sheet.`)) return;
     if (!window.confirm(`Are you sure? Deleting "${nm}" can't be undone and will sync to everyone on the team.`)) return;
+    if (!window.confirm(`Are you sure? This is a really bad idea.`)) return;
     setCols(cs => cs.filter(c => c.key !== key));
   };
   const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
