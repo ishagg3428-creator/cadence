@@ -2754,7 +2754,13 @@ function TrackerView({ ctx }) {
   }, [personDropOpen]);
 
   const addCol = () => { const label = window.prompt("New column name:"); if (!label || !label.trim()) return; setCols(cs => [...cs, { key: "c_" + uid(), label: label.trim(), w: 150 }]); };
-  const delCol = (key) => { if (!window.confirm("Delete this column?")) return; setCols(cs => cs.filter(c => c.key !== key)); };
+  const delCol = (key) => {
+    const c = cols.find(x => x.key === key);
+    const nm = c ? (c.label || "this column") : "this column";
+    if (!window.confirm(`Delete the "${nm}" column?\n\nThis removes it from every row in this sheet.`)) return;
+    if (!window.confirm(`Are you sure? Deleting "${nm}" can't be undone and will sync to everyone on the team.`)) return;
+    setCols(cs => cs.filter(c => c.key !== key));
+  };
   const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const startResize = (e, key, startW) => {
     e.preventDefault(); e.stopPropagation();
@@ -2904,6 +2910,7 @@ function TrackerView({ ctx }) {
                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
                       <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === visibleCols.length - 1} style={colBtn}>›</button>
+                      <button title="Delete column" onClick={() => delCol(c.key)} style={{ ...colBtn, color: "#c0392b", fontSize: 12 }}>×</button>
                     </div>
                     <div onMouseDown={e => startResize(e, c.key, c.w)} title="Drag to resize column" style={{ position: "absolute", top: 0, right: 0, width: 6, height: "100%", cursor: "col-resize", userSelect: "none" }} />
                   </th>
