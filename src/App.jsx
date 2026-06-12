@@ -2157,6 +2157,7 @@ function TeamView({ ctx }) {
   const [pq, setPq] = useState("");
   const [openPerson, setOpenPerson] = useState(null);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [projOpen, setProjOpen] = useState(true);
   const gComplete = (g) => g.members.length > 0 && g.members.every(m => m.done);
 
   // build contact book from everyone who's been on a project with you
@@ -2253,7 +2254,10 @@ function TeamView({ ctx }) {
           ))}
         </div>)}
 
-      <div className="sec-h"><FolderOpen size={18} />Projects</div>
+      <div className="sec-h" style={{ cursor: "pointer", userSelect: "none" }} onClick={() => { setProjOpen(v => !v); setPq(""); }}>
+        <FolderOpen size={18} />Projects<span style={{ marginLeft: "auto", fontSize: 12, color: "var(--dim)", fontWeight: 500 }}>{projOpen ? "▲" : "▼"}</span>
+      </div>
+      {projOpen && (
       <div className="panel">
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 160 }}>
@@ -2301,6 +2305,7 @@ function TeamView({ ctx }) {
           );
         })()}
       </div>
+      )}
 
       <details style={{ marginTop: 10 }}>
         <summary style={{ cursor: "pointer", fontSize: 13.5, fontWeight: 600, color: "var(--muted)", padding: "4px 2px" }}>Need a group you're not on? Email any group</summary>
