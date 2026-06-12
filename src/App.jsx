@@ -2689,6 +2689,7 @@ function TrackerView({ ctx }) {
   const curV = useRef(0);
   const lastSave = useRef(0);
   const applyingRemote = useRef(false);
+  const hydrated = useRef(false); // true once the DB's authoritative copy has loaded — guards against pushing a stale local cache up
   const buildDoc = () => ({ rows: data.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses });
   // Load from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
@@ -2712,6 +2713,7 @@ function TrackerView({ ctx }) {
           try { const res = await apiSave({ rows: seeded.map(r => ({ ...r, emails: rowEmails(r) })), cols, statuses }); if (res && res.v) curV.current = res.v; } catch (e) {}
         }
       } catch (e) { apiOk.current = false; }
+      hydrated.current = true;
       if (cancelled) return;
       timer = setInterval(async () => {
         if (!apiOk.current) return;
@@ -2732,6 +2734,7 @@ function TrackerView({ ctx }) {
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
     saveTracker({ cols, rows: data, statuses }, "main");
+    if (!hydrated.current) return; // never push to the shared DB before we've loaded its copy (stops a stale local cache from overwriting it)
     if (applyingRemote.current) { applyingRemote.current = false; return; }
     if (!apiOk.current) return;
     const t = setTimeout(async () => {
