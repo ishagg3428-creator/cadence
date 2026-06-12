@@ -1014,7 +1014,10 @@ function GanttView({ ctx }) {
       setJoinErr(""); setJoinCode(""); setJoined({ name: remote.name, role: r2 });
       setTimeout(() => setJoined(null), 2600); openJoined(remote.id);
     } catch (e) {
-      setJoinErr("Can't reach the sharing server right now.");
+      const m = String((e && e.message) || "");
+      if (m.includes("DATABASE_URL")) setJoinErr("Sharing isn't live yet — the site's database hasn't been connected (admin setup needed).");
+      else if (m.includes("APP_KEY") || (e && e.status === 401)) setJoinErr("Sharing isn't live yet — the site's access key isn't configured (admin setup needed).");
+      else setJoinErr("Can't reach the sharing server right now.");
     }
   };
   // Publish shareable projects (owner always; editors when their copy is newer) so codes work across devices.
@@ -1115,7 +1118,15 @@ function GanttView({ ctx }) {
     return { ...p, ...patch, updatedAt: Date.now() };
   }));
   const patchGroup = (pid, gid, fn) => setProjects(ps => ps.map(p => (p.id !== pid || p.myRole === "viewer") ? p : { ...p, updatedAt: Date.now(), groups: p.groups.map(gr => gr.id === gid ? fn(gr) : gr) }));
-  const addProject = () => { const id = uid(); const ts = Date.now(); setProjects(ps => [...ps, { id, name: "New project", color: PALETTE[ps.length % PALETTE.length], due: addDays(todayISO(), 30), start: todayISO(), myRole: "owner", ...genCodes(), codeCadence: "month", cascade: false, createdAt: ts, updatedAt: ts, groups: [] }]); setOpenId(id); setEdit({ pid: id }); };
+  // New projects go through a draft modal — nothing is created until "Create project" is clicked.
+  const [draft, setDraft] = useState(null);
+  const startDraft = () => setDraft({ name: "", start: todayISO(), due: addDays(todayISO(), 30), color: PALETTE[gdRef.current.projects.length % PALETTE.length] });
+  const createProject = () => {
+    if (!draft || !draft.name.trim()) return;
+    const id = uid(); const ts = Date.now();
+    setProjects(ps => [...ps, { id, name: draft.name.trim(), color: draft.color, due: draft.due, start: draft.start, myRole: "owner", ...genCodes(), codeCadence: "month", cascade: false, createdAt: ts, updatedAt: ts, groups: [] }]);
+    setDraft(null); setOpenId(id); setEdit({ pid: id });
+  };
   const delProject = (pid) => { setProjects(ps => ps.filter(p => p.id !== pid)); setEdit(null); setOpenId(null); };
   const addGroup = (pid) => { const id = uid(); const p = gdRef.current.projects.find(x => x.id === pid); if (p && p.myRole === "viewer") return; const used = new Set((p ? p.groups : []).map(g => g.color)); const color = PALETTE.find(c => !used.has(c)) || PALETTE[(p ? p.groups.length : 0) % PALETTE.length]; setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: [...x.groups, { id, name: "New group", color, desc: "", start: todayISO(), end: addDays(todayISO(), 5), members: [] }] })); setEdit({ pid, gid: id }); };
   const delGroup = (pid, gid) => { const p = gdRef.current.projects.find(x => x.id === pid); if (p && p.myRole === "viewer") return; let next = { pid }; if (p) { const idx = p.groups.findIndex(g => g.id === gid); const remaining = p.groups.filter(g => g.id !== gid); if (remaining.length) next = { pid, gid: remaining[Math.max(0, idx - 1)].id }; } setProjects(ps => ps.map(x => x.id !== pid ? x : { ...x, groups: x.groups.filter(g => g.id !== gid) })); setEdit(next); };
@@ -1161,7 +1172,7 @@ function GanttView({ ctx }) {
               <div style={{ fontSize: 10.5, color: joinErr ? "var(--primary)" : "var(--dim)", marginTop: 3, textAlign: "center" }}>{joinErr || "Enter a project's viewer or editor code"}</div>
             </div>
             {gd.projects.some(p => p.deleted) && <button className="btn" onClick={() => setOpenId("__trash__")}><Trash2 size={15} />Trash ({gd.projects.filter(p => p.deleted).length})</button>}
-            <button className="btn btn-pri" onClick={addProject}><Plus size={16} />New project</button>
+            <button className="btn btn-pri" onClick={startDraft}><Plus size={16} />New project</button>
           </div>
         </div>
         {joined && <Confetti />}
@@ -1240,6 +1251,28 @@ function GanttView({ ctx }) {
             </>
           );
         })()}
+        {draft && (
+          <div className="ov" onClick={() => setDraft(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+              <div className="modal-h"><h2>New project</h2><button className="btn btn-ghost icon-btn" onClick={() => setDraft(null)}><X size={18} /></button></div>
+              <div className="fld"><label>Project name</label><input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} onKeyDown={e => e.key === "Enter" && createProject()} placeholder="e.g. Walmart Remodel" autoFocus /></div>
+              <div className="row2">
+                <div className="fld"><label>Start date</label><input type="date" value={draft.start} onKeyDown={e => e.preventDefault()} onMouseDown={e => { e.preventDefault(); try { e.currentTarget.showPicker && e.currentTarget.showPicker(); } catch (_) {} }} onChange={e => setDraft(d => ({ ...d, start: e.target.value }))} /></div>
+                <div className="fld"><label>Due date</label><input type="date" value={draft.due} onKeyDown={e => e.preventDefault()} onMouseDown={e => { e.preventDefault(); try { e.currentTarget.showPicker && e.currentTarget.showPicker(); } catch (_) {} }} onChange={e => setDraft(d => ({ ...d, due: e.target.value }))} /></div>
+              </div>
+              <div className="fld"><label>Color</label>
+                <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
+                  {PALETTE.map(c => <span key={c} className={`swatch ${draft.color === c ? "on" : ""}`} style={{ background: c }} onClick={() => setDraft(d => ({ ...d, color: c }))} />)}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                <button className="btn" style={{ flex: 1, justifyContent: "center", padding: "12px" }} onClick={() => setDraft(null)}>Cancel</button>
+                <button className="btn btn-pri" style={{ flex: 1, justifyContent: "center", padding: "12px" }} disabled={!draft.name.trim()} onClick={createProject}><Check size={15} />Create project</button>
+              </div>
+              <div className="login-foot" style={{ marginTop: 10 }}>Nothing is made until you hit Create — closing this discards the draft.</div>
+            </div>
+          </div>
+        )}
         {confirmDel && (
           <div className="ov" onClick={() => setConfirmDel(null)}>
             <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 390 }}>

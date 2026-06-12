@@ -3,9 +3,17 @@
 const KEY = import.meta.env.VITE_APP_KEY || "";
 const AUTH = KEY ? { "x-app-key": KEY } : {};
 
+async function fail(r, fallback) {
+  let msg = "";
+  try { msg = (await r.json()).error || ""; } catch (e) {}
+  const err = new Error(msg || fallback);
+  err.status = r.status;
+  throw err;
+}
+
 export async function ganttLoad() {
   const r = await fetch("/api/gantt", { cache: "no-store", headers: AUTH });
-  if (!r.ok) throw new Error("gantt load failed");
+  if (!r.ok) await fail(r, "gantt load failed");
   return r.json();
 }
 export async function ganttSave(doc) {
@@ -14,6 +22,6 @@ export async function ganttSave(doc) {
     headers: { "Content-Type": "application/json", ...AUTH },
     body: JSON.stringify(doc),
   });
-  if (!r.ok) throw new Error("gantt save failed");
+  if (!r.ok) await fail(r, "gantt save failed");
   return r.json();
 }
