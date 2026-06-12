@@ -12,6 +12,10 @@ async function ensureTable() {
 }
 
 export default async function handler(req, res) {
+  // Auth: the website sends header  x-app-key: <APP_KEY>
+  const key = process.env.APP_KEY;
+  if (!key) return res.status(500).json({ error: "APP_KEY not configured" });
+  if (req.headers["x-app-key"] !== key) return res.status(401).json({ error: "unauthorized" });
   try {
     await ensureTable();
 
