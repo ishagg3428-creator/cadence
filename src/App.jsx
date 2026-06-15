@@ -4,7 +4,7 @@ import {
   Plus, CalendarDays, Users, LayoutGrid, Mail, Check, Trash2, Pencil,
   Download, Upload, X, ChevronLeft, ChevronRight, Search, Sparkles,
   CheckCircle2, Circle, Clock, FolderOpen, AlertCircle, LogOut, Send, ShieldCheck,
-  LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table
+  LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table, Copy
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
@@ -2671,6 +2671,7 @@ function TrackerView({ ctx }) {
   const hydrated = useRef(false); // true once the DB's authoritative copy has loaded — guards against pushing a stale local cache up
   const editingRef = useRef(false); // true while a cell is focused — pause remote pulls so we don't yank data mid-edit
   const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "offline"
+  const [undoStack, setUndoStack] = useState([]); // recent row/column deletions, for one-click restore
   const buildDoc = () => ({ sheets: sheets.map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
   const withIds = (sh) => sh.map(s => ({ ...s, rows: (s.rows || []).map((r, i) => r._id ? r : { ...r, _id: (s.id || "s") + i }) }));
   const docToSheets = (doc) => {
@@ -2742,7 +2743,20 @@ function TrackerView({ ctx }) {
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
   const setStatus = (id, val) => { if (val === "__new") { const n = window.prompt("New status name:"); if (!n || !n.trim()) return; const nm = n.trim(); setStatuses(ss => ss.includes(nm) ? ss : [...ss, nm]); update(id, "stage", nm); return; } update(id, "stage", val); };
   const addRow = () => setData(ds => [{ _id: "r" + uid() }, ...ds]);
-  const delRow = (id) => setData(ds => ds.filter(r => r._id !== id));
+  const addRowBottom = () => setData(ds => [...ds, { _id: "r" + uid() }]);
+  const dupRow = (id) => { const i = data.findIndex(r => r._id === id); if (i < 0) return; const copy = { ...data[i], _id: "r" + uid() }; setData(ds => { const c = [...ds]; const j = c.findIndex(r => r._id === id); c.splice((j < 0 ? c.length : j) + 1, 0, copy); return c; }); };
+  const delRow = (id) => { const i = data.findIndex(r => r._id === id); if (i < 0) return; const row = data[i]; setUndoStack(st => [...st, { type: "row", sheetId: activeSheet, item: row, index: i, label: row.projectName || "row" }].slice(-25)); setData(ds => ds.filter(r => r._id !== id)); };
+  const undoDelete = () => {
+    if (!undoStack.length) return;
+    const last = undoStack[undoStack.length - 1];
+    setSheets(ss => ss.map(s => {
+      if (s.id !== last.sheetId) return s;
+      if (last.type === "row") { const rows2 = [...(s.rows || [])]; rows2.splice(Math.min(last.index, rows2.length), 0, last.item); return { ...s, rows: rows2 }; }
+      if (last.type === "col") { const c = [...(s.cols || [])]; c.splice(Math.min(last.index, c.length), 0, last.item); return { ...s, cols: c }; }
+      return s;
+    }));
+    setUndoStack(st => st.slice(0, -1));
+  };
   const dropOnRow = (targetId) => { setData(ds => { if (!dragId || dragId === targetId) return ds; const from = ds.findIndex(r => r._id === dragId); const to = ds.findIndex(r => r._id === targetId); if (from < 0 || to < 0) return ds; const c = [...ds]; const [m] = c.splice(from, 1); c.splice(to, 0, m); return c; }); setDragId(null); setOverId(null); };
   const moveRow = (id, dir) => setData(ds => {
     const vis = ds.filter(r => rows.some(x => x._id === r._id));
@@ -2768,6 +2782,8 @@ function TrackerView({ ctx }) {
     if (!window.confirm(`Delete the "${nm}" column?\n\nThis removes it from every row in this sheet.`)) return;
     if (!window.confirm(`Are you sure? Deleting "${nm}" can't be undone and will sync to everyone on the team.`)) return;
     if (!window.confirm(`Are you sure? This is a really bad idea.`)) return;
+    const idx = cols.findIndex(x => x.key === key);
+    setUndoStack(st => [...st, { type: "col", sheetId: activeSheet, item: c, index: idx < 0 ? cols.length : idx, label: nm }].slice(-25));
     setCols(cs => cs.filter(c => c.key !== key));
   };
   const moveCol = (key, dir) => setCols(cs => { const i = cs.findIndex(c => c.key === key); const j = i + dir; if (j < 0 || j >= cs.length) return cs; const c = [...cs]; [c[i], c[j]] = [c[j], c[i]]; return c; });
@@ -2887,6 +2903,11 @@ function TrackerView({ ctx }) {
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          {undoStack.length > 0 && (
+            <button className="btn btn-sm" onClick={undoDelete} title={`Restore last deleted ${undoStack[undoStack.length - 1].type === "col" ? "column" : "row"}: ${undoStack[undoStack.length - 1].label || ""}`} style={{ gap: 6 }}>
+              <RotateCcw size={14} />Undo delete
+            </button>
+          )}
           <div style={{ position: "relative" }}>
             <button className="btn btn-sm" onClick={() => setShowColSettings(v => !v)} title="Show/hide columns" style={{ gap: 6 }}>
               <Settings size={14} />{hiddenCols.length > 0 && <span style={{ background: "var(--primary)", color: "#fff", borderRadius: 99, fontSize: 10, fontWeight: 700, padding: "1px 5px" }}>{hiddenCols.length}</span>}Columns
@@ -2963,7 +2984,8 @@ function TrackerView({ ctx }) {
                           <option value="__new">➕ New status…</option>
                         </select>
                       ) : (
-                        <input key={r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
+                        <input key={r._id + "-" + c.key} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = rows.findIndex(x => x._id === r._id); const next = rows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
                     </td>
@@ -2979,12 +3001,16 @@ function TrackerView({ ctx }) {
                   <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px", ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
                     <button title="Move up" onClick={() => moveRow(r._id, -1)} style={actBtn}><ChevronUp size={15} /></button>
                     <button title="Move down" onClick={() => moveRow(r._id, 1)} style={actBtn}><ChevronDown size={15} /></button>
+                    <button title="Duplicate row" onClick={() => dupRow(r._id)} style={actBtn}><Copy size={13} /></button>
                     <button title="Delete row" onClick={() => { if (window.confirm("Delete this row?")) delRow(r._id); }} style={{ ...actBtn, color: "#c0392b" }}><Trash2 size={14} /></button>
                   </td>
                 </tr>
                 );
               })}
               {rows.length === 0 && <tr><td colSpan={cols.length + 3} style={{ ...cell, textAlign: "center", padding: 24, color: "#777" }}>No projects match.</td></tr>}
+              <tr><td colSpan={visibleCols.length + 3} style={{ ...cell, padding: 0, background: "var(--panel2)" }}>
+                <button onClick={addRowBottom} title="Add a new row at the bottom" style={{ width: "100%", border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "7px", fontSize: 12.5, fontWeight: 600 }}><Plus size={14} />Add row</button>
+              </td></tr>
             </tbody>
           </table>
         </div>
