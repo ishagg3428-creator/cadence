@@ -2669,6 +2669,8 @@ function TrackerView({ ctx }) {
   const lastSave = useRef(0);
   const applyingRemote = useRef(false);
   const hydrated = useRef(false); // true once the DB's authoritative copy has loaded — guards against pushing a stale local cache up
+  const editingRef = useRef(false); // true while a cell is focused — pause remote pulls so we don't yank data mid-edit
+  const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "offline"
   const buildDoc = () => ({ sheets: sheets.map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
   const withIds = (sh) => sh.map(s => ({ ...s, rows: (s.rows || []).map((r, i) => r._id ? r : { ...r, _id: (s.id || "s") + i }) }));
   const docToSheets = (doc) => {
@@ -2681,7 +2683,7 @@ function TrackerView({ ctx }) {
   useEffect(() => {
     let timer, cancelled = false;
     const pull = async () => {
-      if (!apiOk.current || document.hidden) return; // skip when tab is hidden to save DB calls
+      if (!apiOk.current || document.hidden || editingRef.current) return; // skip when tab hidden or a cell is being edited
       try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
     };
     (async () => {
@@ -2691,7 +2693,8 @@ function TrackerView({ ctx }) {
         const sh = docToSheets(doc);
         if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = (doc && doc.v) || 0; }
         else { const res = await apiSave({ sheets: SEED_SHEETS }); if (res && res.v) curV.current = res.v; }
-      } catch (e) { apiOk.current = false; }
+        setSyncState("saved");
+      } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
       if (cancelled) return;
       timer = setInterval(pull, 2500); // poll every 2.5s for near-live updates
@@ -2706,9 +2709,10 @@ function TrackerView({ ctx }) {
     try { localStorage.setItem(SHEETS_KEY, JSON.stringify(sheets)); } catch (e) {}
     if (!hydrated.current) return; // never push to the shared DB before we've loaded its copy (stops a stale local cache from overwriting it)
     if (applyingRemote.current) { applyingRemote.current = false; return; }
-    if (!apiOk.current) return;
+    if (!apiOk.current) { setSyncState("offline"); return; }
+    setSyncState("saving");
     const t = setTimeout(async () => {
-      try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; } catch (e) {}
+      try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; setSyncState("saved"); } catch (e) { setSyncState("offline"); }
     }, 700);
     return () => clearTimeout(t);
   }, [sheets]);
@@ -2789,8 +2793,18 @@ function TrackerView({ ctx }) {
   const actBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", display: "inline-grid", placeItems: "center", padding: 2 };
   return (
     <>
-      <div className="head">
+      <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
+        {(() => {
+          const m = { saving: ["Saving…", "#E8A53C"], saved: ["Synced", "#33B36B"], offline: ["Offline — local only", "#E03A3E"] }[syncState] || ["Synced", "#33B36B"];
+          return (
+            <div title={syncState === "offline" ? "Can't reach the shared database — edits are saved on this device only." : (syncState === "saving" ? "Saving your changes to the shared database…" : "All changes saved to the shared database.")}
+              style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "var(--muted)", whiteSpace: "nowrap" }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: m[1], boxShadow: syncState === "saving" ? "0 0 0 3px " + m[1] + "33" : "none", transition: "background .2s" }} />
+              {m[0]}
+            </div>
+          );
+        })()}
       </div>
       {/* Sheet tabs */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 0, flexWrap: "wrap", borderBottom: "2px solid var(--line)", paddingBottom: 0, justifyContent: "flex-start", width: "96vw", maxWidth: "96vw", marginLeft: "calc(-48vw + 50%)" }}>
@@ -2904,7 +2918,7 @@ function TrackerView({ ctx }) {
 .trk-role a{color:var(--teal);text-decoration:none;}
 .trk-role a:hover{text-decoration:underline;}
 .trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
-        <div style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid var(--line)", borderRadius: 8 }}>
+        <div onFocusCapture={() => { editingRef.current = true; }} onBlurCapture={() => { setTimeout(() => { editingRef.current = false; }, 400); }} style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid var(--line)", borderRadius: 8 }}>
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
             <thead>
               <tr>
