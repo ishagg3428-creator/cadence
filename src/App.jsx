@@ -2715,10 +2715,10 @@ function TrackerView({ ctx }) {
   };
   // Load all sheets from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
-    let timer, cancelled = false;
+    let timer, cancelled = false, flashTimer;
     const pull = async () => {
       if (!apiOk.current || document.hidden || editingRef.current) return; // skip when tab hidden or a cell is being edited
-      try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); applyingRemote.current = true; setSheets(withId); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); } } } catch (e) {}
+      try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); applyingRemote.current = true; setSheets(withId); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
     };
     (async () => {
       try {
@@ -2731,12 +2731,12 @@ function TrackerView({ ctx }) {
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
       if (cancelled) return;
-      timer = setInterval(pull, 2500); // poll every 2.5s for near-live updates
+      timer = setInterval(pull, 1500); // poll every 1.5s for near-live updates
     })();
     const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
-    return () => { cancelled = true; if (timer) clearInterval(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
+    return () => { cancelled = true; if (timer) clearInterval(timer); clearTimeout(flashTimer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
