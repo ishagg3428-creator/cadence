@@ -2698,7 +2698,7 @@ function TrackerView({ ctx }) {
   const apiOk = useRef(false);
   const curV = useRef(0);
   const lastSave = useRef(0);
-  const applyingRemote = useRef(false);
+  const savingRef = useRef(false); // true while a save round-trip is in flight — pause pulls so we don't race our own write
   const hydrated = useRef(false); // true once the DB's authoritative copy has loaded — guards against pushing a stale local cache up
   const editingRef = useRef(false); // true while a cell is focused — pause remote pulls so we don't yank data mid-edit
   const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "merging" | "offline"
@@ -2717,16 +2717,18 @@ function TrackerView({ ctx }) {
   useEffect(() => {
     let timer, cancelled = false, flashTimer;
     const pull = async () => {
-      if (!apiOk.current || document.hidden || editingRef.current) return; // skip when tab hidden or a cell is being edited
-      try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); applyingRemote.current = true; setSheets(withId); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
+      if (!apiOk.current || document.hidden || editingRef.current || savingRef.current) return; // skip when hidden, editing, or mid-save
+      // Pull whenever the server's version differs from the one we last saw (not just ">"), so a window
+      // can never get stuck showing its own stale copy.
+      try { const doc = await apiLoad(); if (doc && doc.v !== curV.current) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
     };
     (async () => {
       try {
         const doc = await apiLoad();
         apiOk.current = true;
         const sh = docToSheets(doc);
-        if (sh) { const withId = withIds(sh); applyingRemote.current = true; setSheets(withId); curV.current = (doc && doc.v) || 0; baseDoc.current = buildDocFrom(withId); }
-        else { const seeded = buildDocFrom(SEED_SHEETS); const res = await apiSave(seeded, 0); if (res && res.v) curV.current = res.v; baseDoc.current = seeded; }
+        if (sh) { const withId = withIds(sh); curV.current = (doc && doc.v) || 0; baseDoc.current = buildDocFrom(withId); setSheets(withId); }
+        else { const mine0 = buildDoc(); const res = await apiSave(mine0, 0); if (res && res.v) curV.current = res.v; baseDoc.current = mine0; }
         setSyncState("saved");
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
@@ -2742,14 +2744,17 @@ function TrackerView({ ctx }) {
   useEffect(() => {
     try { localStorage.setItem(SHEETS_KEY, JSON.stringify(sheets)); } catch (e) {}
     if (!hydrated.current) return; // never push to the shared DB before we've loaded its copy (stops a stale local cache from overwriting it)
-    if (applyingRemote.current) { applyingRemote.current = false; return; }
     if (!apiOk.current) { setSyncState("offline"); return; }
+    // Only save if our doc actually differs from the last copy we synced. This (not a flag) is how we
+    // skip re-saving a change we just pulled in — and it can't get "stuck" the way a flag can.
+    if (baseDoc.current && _eq(buildDoc(), baseDoc.current)) { setSyncState("saved"); return; }
     setSyncState("saving");
     const t = setTimeout(async () => {
       // Optimistic concurrency: save based on the version we last saw. If the server moved
       // ahead (a teammate saved), merge their copy with ours so both sets of edits survive, then retry.
       let mine = buildDoc();
       let baseV = curV.current;
+      savingRef.current = true;
       try {
         for (let attempt = 0; attempt < 5; attempt++) {
           const res = await apiSave(mine, baseV);
@@ -2763,14 +2768,14 @@ function TrackerView({ ctx }) {
           }
           if (res && res.ok) {
             curV.current = res.v; lastSave.current = Date.now(); baseDoc.current = mine;
-            applyingRemote.current = true; setSheets(withIds(mine.sheets)); // reflect the merged result in the UI without re-saving
-            setSyncState("saved");
+            setSheets(withIds(mine.sheets)); // reflect the merged result (the equality check above stops a re-save)
+            setSyncState("saved"); savingRef.current = false;
             return;
           }
-          setSyncState("offline"); return;
+          setSyncState("offline"); savingRef.current = false; return;
         }
-        setSyncState("offline"); // gave up after repeated conflicts; next edit will retry
-      } catch (e) { setSyncState("offline"); }
+        setSyncState("offline"); savingRef.current = false; // gave up after repeated conflicts; next edit/poll will reconcile
+      } catch (e) { setSyncState("offline"); savingRef.current = false; }
     }, 700);
     return () => clearTimeout(t);
   }, [sheets]);
