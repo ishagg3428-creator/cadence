@@ -2733,7 +2733,7 @@ function TrackerView({ ctx }) {
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
       if (cancelled) return;
-      timer = setInterval(pull, 1500); // poll every 1.5s for near-live updates
+      timer = setInterval(pull, 1000); // poll every 1s for near-live updates
     })();
     const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
     window.addEventListener("focus", onFocus);
@@ -3046,7 +3046,7 @@ function TrackerView({ ctx }) {
                           <option value="__new">➕ New status…</option>
                         </select>
                       ) : (
-                        <input key={r._id + "-" + c.key} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
+                        <input key={r._id + "-" + c.key + "::" + (r[c.key] ?? "")} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
                           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = rows.findIndex(x => x._id === r._id); const next = rows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
