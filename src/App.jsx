@@ -2703,6 +2703,7 @@ function TrackerView({ ctx }) {
   const editingRef = useRef(false); // true while a cell is focused — pause remote pulls so we don't yank data mid-edit
   const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "merging" | "offline"
   const [undoStack, setUndoStack] = useState([]); // recent row/column deletions, for one-click restore
+  const [remoteRev, setRemoteRev] = useState(0); // bumps only when data arrives from the DB, to refresh cell inputs without remounting on every local edit
   const baseDoc = useRef(null); // the doc as last confirmed on the server — the merge base for conflict resolution
   const buildDocFrom = (shs) => ({ sheets: (shs || []).map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
   const buildDoc = () => buildDocFrom(sheets);
@@ -2720,7 +2721,7 @@ function TrackerView({ ctx }) {
       if (!apiOk.current || document.hidden || editingRef.current || savingRef.current) return; // skip when hidden, editing, or mid-save
       // Pull whenever the server's version differs from the one we last saw (not just ">"), so a window
       // can never get stuck showing its own stale copy.
-      try { const doc = await apiLoad(); if (doc && doc.v !== curV.current) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
+      try { const doc = await apiLoad(); if (doc && doc.v !== curV.current) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setRemoteRev(n => n + 1); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
     };
     (async () => {
       try {
@@ -2768,7 +2769,7 @@ function TrackerView({ ctx }) {
           }
           if (res && res.ok) {
             curV.current = res.v; lastSave.current = Date.now(); baseDoc.current = mine;
-            setSheets(withIds(mine.sheets)); // reflect the merged result (the equality check above stops a re-save)
+            setSheets(withIds(mine.sheets)); setRemoteRev(n => n + 1); // reflect the merged result (the equality check above stops a re-save)
             setSyncState("saved"); savingRef.current = false;
             return;
           }
@@ -3046,7 +3047,7 @@ function TrackerView({ ctx }) {
                           <option value="__new">➕ New status…</option>
                         </select>
                       ) : (
-                        <input key={r._id + "-" + c.key + "::" + (r[c.key] ?? "")} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
+                        <input key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
                           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = rows.findIndex(x => x._id === r._id); const next = rows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
