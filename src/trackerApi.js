@@ -9,12 +9,16 @@ export async function apiLoad() {
   if (!r.ok) throw new Error("api load failed");
   return r.json();
 }
-export async function apiSave(doc) {
+export async function apiSave(doc, baseV) {
+  const headers = { "Content-Type": "application/json", ...AUTH };
+  if (baseV != null) headers["x-base-v"] = String(baseV);
   const r = await fetch("/api/tracker", {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...AUTH },
+    headers,
     body: JSON.stringify(doc),
   });
+  // 409 = someone else saved a newer version; return their copy so the caller can merge + retry.
+  if (r.status === 409) { const j = await r.json(); return { conflict: true, doc: j.doc, v: j.v }; }
   if (!r.ok) throw new Error("api save failed");
   return r.json();
 }

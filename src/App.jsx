@@ -295,6 +295,37 @@ const STORE_KEY = "cadence:data:v2";
 const USER_KEY = "cadence:user:v1";
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+// 3-way merge for the shared tracker doc: base = last-synced copy, mine = local edits,
+// theirs = the newer copy the server returned on a version conflict. Edits to different
+// rows/fields both survive; if the same field changed in both, the local edit wins.
+const _eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const _indexBy = (arr, k) => { const o = {}; (arr || []).forEach(x => { if (x && x[k] != null) o[x[k]] = x; }); return o; };
+const _orderedUnion = (a, b, k) => { const seen = new Set(), out = []; (a || []).concat(b || []).forEach(x => { if (x && x[k] != null && !seen.has(x[k])) { seen.add(x[k]); out.push(x[k]); } }); return out; };
+const _pick = (b, m, t) => (!_eq(m, b) ? m : t);
+const _mergeRow = (b, m, t) => { if (!m) return t; if (!t) return m; const row = {}; new Set([...Object.keys(m), ...Object.keys(t)]).forEach(k => { row[k] = !_eq(m[k], b ? b[k] : undefined) ? m[k] : t[k]; }); return row; };
+const _mergeRows = (bR, mR, tR) => {
+  const b = _indexBy(bR, "_id"), m = _indexBy(mR, "_id"), t = _indexBy(tR, "_id"); const out = [];
+  for (const id of _orderedUnion(mR, tR, "_id")) {
+    const br = b[id], mr = m[id], tr = t[id];
+    if (mr && !tr) { if (br && _eq(mr, br)) continue; out.push(mr); continue; }
+    if (tr && !mr) { if (br && _eq(tr, br)) continue; out.push(tr); continue; }
+    out.push(_mergeRow(br, mr, tr));
+  }
+  return out;
+};
+const _mergeSheet = (b, m, t) => ({ ...m, name: _pick(b && b.name, m.name, t.name), cols: _pick(b && b.cols, m.cols, t.cols), statuses: _pick(b && b.statuses, m.statuses, t.statuses), rows: _mergeRows((b && b.rows) || [], m.rows || [], t.rows || []) });
+const mergeDocs = (base, mine, theirs) => {
+  base = base || { sheets: [] };
+  const b = _indexBy(base.sheets, "id"), m = _indexBy(mine.sheets, "id"), t = _indexBy(theirs.sheets, "id");
+  const sheets = [];
+  for (const id of _orderedUnion(mine.sheets, theirs.sheets, "id")) {
+    const bs = b[id], ms = m[id], ts = t[id];
+    if (ms && !ts) { if (bs && _eq(ms, bs)) continue; sheets.push(ms); continue; }
+    if (ts && !ms) { if (bs && _eq(ts, bs)) continue; sheets.push(ts); continue; }
+    sheets.push(_mergeSheet(bs, ms, ts));
+  }
+  return { sheets };
+};
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const initials = (n) => (n || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
 const MS = 86400000;
@@ -2670,9 +2701,11 @@ function TrackerView({ ctx }) {
   const applyingRemote = useRef(false);
   const hydrated = useRef(false); // true once the DB's authoritative copy has loaded — guards against pushing a stale local cache up
   const editingRef = useRef(false); // true while a cell is focused — pause remote pulls so we don't yank data mid-edit
-  const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "offline"
+  const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "merging" | "offline"
   const [undoStack, setUndoStack] = useState([]); // recent row/column deletions, for one-click restore
-  const buildDoc = () => ({ sheets: sheets.map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
+  const baseDoc = useRef(null); // the doc as last confirmed on the server — the merge base for conflict resolution
+  const buildDocFrom = (shs) => ({ sheets: (shs || []).map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
+  const buildDoc = () => buildDocFrom(sheets);
   const withIds = (sh) => sh.map(s => ({ ...s, rows: (s.rows || []).map((r, i) => r._id ? r : { ...r, _id: (s.id || "s") + i }) }));
   const docToSheets = (doc) => {
     if (!doc) return null;
@@ -2685,15 +2718,15 @@ function TrackerView({ ctx }) {
     let timer, cancelled = false;
     const pull = async () => {
       if (!apiOk.current || document.hidden || editingRef.current) return; // skip when tab hidden or a cell is being edited
-      try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
+      try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); applyingRemote.current = true; setSheets(withId); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); } } } catch (e) {}
     };
     (async () => {
       try {
         const doc = await apiLoad();
         apiOk.current = true;
         const sh = docToSheets(doc);
-        if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = (doc && doc.v) || 0; }
-        else { const res = await apiSave({ sheets: SEED_SHEETS }); if (res && res.v) curV.current = res.v; }
+        if (sh) { const withId = withIds(sh); applyingRemote.current = true; setSheets(withId); curV.current = (doc && doc.v) || 0; baseDoc.current = buildDocFrom(withId); }
+        else { const seeded = buildDocFrom(SEED_SHEETS); const res = await apiSave(seeded, 0); if (res && res.v) curV.current = res.v; baseDoc.current = seeded; }
         setSyncState("saved");
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
@@ -2713,7 +2746,31 @@ function TrackerView({ ctx }) {
     if (!apiOk.current) { setSyncState("offline"); return; }
     setSyncState("saving");
     const t = setTimeout(async () => {
-      try { const res = await apiSave(buildDoc()); lastSave.current = Date.now(); if (res && res.v) curV.current = res.v; setSyncState("saved"); } catch (e) { setSyncState("offline"); }
+      // Optimistic concurrency: save based on the version we last saw. If the server moved
+      // ahead (a teammate saved), merge their copy with ours so both sets of edits survive, then retry.
+      let mine = buildDoc();
+      let baseV = curV.current;
+      try {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const res = await apiSave(mine, baseV);
+          if (res && res.conflict) {
+            setSyncState("merging");
+            const theirs = { sheets: (res.doc && res.doc.sheets) || [] };
+            mine = buildDocFrom(mergeDocs(baseDoc.current, mine, theirs).sheets);
+            baseDoc.current = theirs; // their copy is the new common ancestor for the next round
+            baseV = res.v;
+            continue;
+          }
+          if (res && res.ok) {
+            curV.current = res.v; lastSave.current = Date.now(); baseDoc.current = mine;
+            applyingRemote.current = true; setSheets(withIds(mine.sheets)); // reflect the merged result in the UI without re-saving
+            setSyncState("saved");
+            return;
+          }
+          setSyncState("offline"); return;
+        }
+        setSyncState("offline"); // gave up after repeated conflicts; next edit will retry
+      } catch (e) { setSyncState("offline"); }
     }, 700);
     return () => clearTimeout(t);
   }, [sheets]);
@@ -2812,11 +2869,11 @@ function TrackerView({ ctx }) {
       <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div><div className="h-title">Tracker</div><div className="h-sub">Your COM project tracker — every project and assignment, like the sheet.</div></div>
         {(() => {
-          const m = { saving: ["Saving…", "#E8A53C"], saved: ["Synced", "#33B36B"], offline: ["Offline — local only", "#E03A3E"] }[syncState] || ["Synced", "#33B36B"];
+          const m = { saving: ["Saving…", "#E8A53C"], merging: ["Merging…", "#4FA8E8"], saved: ["Synced", "#33B36B"], offline: ["Offline — local only", "#E03A3E"] }[syncState] || ["Synced", "#33B36B"];
           return (
-            <div title={syncState === "offline" ? "Can't reach the shared database — edits are saved on this device only." : (syncState === "saving" ? "Saving your changes to the shared database…" : "All changes saved to the shared database.")}
+            <div title={syncState === "offline" ? "Can't reach the shared database — edits are saved on this device only." : (syncState === "merging" ? "A teammate edited at the same time — merging both sets of changes…" : (syncState === "saving" ? "Saving your changes to the shared database…" : "All changes saved to the shared database."))}
               style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: "var(--muted)", whiteSpace: "nowrap" }}>
-              <span style={{ width: 9, height: 9, borderRadius: "50%", background: m[1], boxShadow: syncState === "saving" ? "0 0 0 3px " + m[1] + "33" : "none", transition: "background .2s" }} />
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: m[1], boxShadow: (syncState === "saving" || syncState === "merging") ? "0 0 0 3px " + m[1] + "33" : "none", transition: "background .2s" }} />
               {m[0]}
             </div>
           );

@@ -35,10 +35,23 @@ export default async function handler(req, res) {
       if (!body || typeof body !== "object") return res.status(400).json({ error: "bad body" });
       const v = Date.now();
       const json = JSON.stringify(body);
-      await sql`insert into tracker_doc (id, doc, v)
-                values (1, ${json}::jsonb, ${v})
-                on conflict (id) do update set doc = excluded.doc, v = excluded.v`;
-      return res.status(200).json({ ok: true, v });
+      // Optimistic concurrency: the client may declare the version its edit is based on
+      // via the x-base-v header. We only overwrite if the server still holds that version.
+      const baseHeader = req.headers["x-base-v"];
+      const baseV = (baseHeader == null || baseHeader === "") ? null : Number(baseHeader);
+      // Single atomic conditional update: matches when no base was declared (back-compat) or the base is current.
+      const updated = await sql`update tracker_doc set doc = ${json}::jsonb, v = ${v}
+                                where id = 1 and (${baseV}::bigint is null or v = ${baseV})
+                                returning v`;
+      if (updated.length) return res.status(200).json({ ok: true, v });
+      // No row updated: either the table is empty (first write) or there's a version conflict.
+      const cur = await sql`select doc, v from tracker_doc where id = 1`;
+      if (!cur.length) {
+        await sql`insert into tracker_doc (id, doc, v) values (1, ${json}::jsonb, ${v})
+                  on conflict (id) do update set doc = excluded.doc, v = excluded.v`;
+        return res.status(200).json({ ok: true, v });
+      }
+      return res.status(409).json({ conflict: true, doc: cur[0].doc, v: Number(cur[0].v) });
     }
 
     res.setHeader("Allow", "GET, POST");
