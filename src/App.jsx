@@ -2680,6 +2680,10 @@ function TrackerView({ ctx }) {
   // Load all sheets from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
     let timer, cancelled = false;
+    const pull = async () => {
+      if (!apiOk.current || document.hidden) return; // skip when tab is hidden to save DB calls
+      try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2000) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
+    };
     (async () => {
       try {
         const doc = await apiLoad();
@@ -2690,12 +2694,12 @@ function TrackerView({ ctx }) {
       } catch (e) { apiOk.current = false; }
       hydrated.current = true;
       if (cancelled) return;
-      timer = setInterval(async () => {
-        if (!apiOk.current) return;
-        try { const doc = await apiLoad(); if (doc && doc.v > curV.current && Date.now() - lastSave.current > 2500) { const sh = docToSheets(doc); if (sh) { applyingRemote.current = true; setSheets(withIds(sh)); curV.current = doc.v; } } } catch (e) {}
-      }, 7000);
+      timer = setInterval(pull, 2500); // poll every 2.5s for near-live updates
     })();
-    return () => { cancelled = true; if (timer) clearInterval(timer); };
+    const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { cancelled = true; if (timer) clearInterval(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
