@@ -2734,7 +2734,7 @@ function TrackerView({ ctx }) {
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
       if (cancelled) return;
-      timer = setInterval(pull, 1000); // poll every 1s for near-live updates
+      timer = setInterval(pull, 600); // poll every 0.6s for near-live updates
     })();
     const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
     window.addEventListener("focus", onFocus);
@@ -2777,7 +2777,7 @@ function TrackerView({ ctx }) {
         }
         setSyncState("offline"); savingRef.current = false; // gave up after repeated conflicts; next edit/poll will reconcile
       } catch (e) { setSyncState("offline"); savingRef.current = false; }
-    }, 700);
+    }, 300);
     return () => clearTimeout(t);
   }, [sheets]);
   const [q, setQ] = useState("");
