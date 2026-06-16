@@ -349,7 +349,7 @@ const NAV = [
   { id: "gantt", label: "Gantt", Icon: GanttChartSquare },
   { id: "alerts", label: "Inbox", Icon: Bell },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
-  { id: "team", label: "Team", Icon: Users },
+  // { id: "team", label: "Team", Icon: Users }, // Team tab hidden — re-enable this line (and the route below) to bring it back.
 ];
 
 /* ---------- storage (browser localStorage) ---------- */
@@ -564,7 +564,7 @@ export default function App() {
         {view === "gantt" && <GanttView ctx={ctx} />}
         {view === "alerts" && <NotificationsView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
-        {view === "team" && <TeamView ctx={ctx} />}
+        {/* {view === "team" && <TeamView ctx={ctx} />} */}{/* Team tab hidden — re-enable with the NAV entry above. */}
       </div>
 
       {taskModal && (
@@ -2881,6 +2881,18 @@ function TrackerView({ ctx }) {
     u.set("subject", `[${row.projectName}] `);
     window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
   };
+  // Flag rows whose due date or bid/permit date is overdue ("over") or within ~7 days ("soon").
+  const rowRisk = (r) => {
+    const t = new Date(); t.setHours(0, 0, 0, 0);
+    const now = t.getTime(), soonMax = now + 7 * 86400000;
+    let over = false, soon = false;
+    ["dueDates", "bidPermitDate"].forEach(k => {
+      const iso = parseTrackerDate(r[k]); if (!iso) return;
+      const d = new Date(iso + "T00:00:00").getTime();
+      if (d < now) over = true; else if (d <= soonMax) soon = true;
+    });
+    return over ? "over" : (soon ? "soon" : null);
+  };
   const GUT = 46;
   const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
@@ -3041,18 +3053,22 @@ function TrackerView({ ctx }) {
             <tbody>
               {rows.map((r, ri) => {
                 const em = rowEmails(r);
+                const risk = rowRisk(r);
+                const tint = selRow === r._id ? "rgba(79,168,232,0.13)" : (risk === "over" ? "rgba(224,58,62,0.13)" : risk === "soon" ? "rgba(232,165,60,0.15)" : null);
+                const gutTint = selRow === r._id ? "rgba(79,168,232,0.18)" : (risk === "over" ? "rgba(224,58,62,0.2)" : risk === "soon" ? "rgba(232,165,60,0.22)" : "var(--panel2)");
                 return (
                 <tr key={r._id || ri}
                   onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
-                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title="Click to highlight this row · drag to reorder"
-                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: selRow === r._id ? "rgba(79,168,232,0.18)" : "var(--panel2)", color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)}
+                    title={risk === "over" ? "A due / bid-permit date is overdue" : risk === "soon" ? "A due / bid-permit date is within 7 days" : "Click to highlight this row · drag to reorder"}
+                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     return (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "var(--panel)" } : {}), ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "var(--panel)" } : {}), ...(tint ? { background: tint } : {}) }}>
                       {isRole ? (
                         <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} />
                       ) : c.key === "stage" ? (
@@ -3070,14 +3086,14 @@ function TrackerView({ ctx }) {
                     </td>
                     );
                   })}
-                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64, ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
+                  <td style={{ ...cell, textAlign: "center", width: 64, minWidth: 64, ...(tint ? { background: tint } : {}) }}>
                     <button title={em.length ? `Email team (${em.length})` : "No team emails"} disabled={!em.length}
                       onClick={() => emailTeam(r)}
                       style={{ border: "none", background: "transparent", cursor: em.length ? "pointer" : "not-allowed", color: em.length ? "#2563c9" : "#c2c8d0", display: "grid", placeItems: "center", width: "100%" }}>
                       <Mail size={15} />
                     </button>
                   </td>
-                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px", ...(selRow === r._id ? { background: "rgba(79,168,232,0.13)" } : {}) }}>
+                  <td style={{ ...cell, width: 96, minWidth: 96, textAlign: "center", padding: "2px 4px", ...(tint ? { background: tint } : {}) }}>
                     <button title="Move up" onClick={() => moveRow(r._id, -1)} style={actBtn}><ChevronUp size={15} /></button>
                     <button title="Move down" onClick={() => moveRow(r._id, 1)} style={actBtn}><ChevronDown size={15} /></button>
                     <button title="Duplicate row" onClick={() => dupRow(r._id)} style={actBtn}><Copy size={13} /></button>
