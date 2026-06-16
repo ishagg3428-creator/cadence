@@ -158,9 +158,9 @@ const css = `
 /* calendar */
 .cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .cal-m { font-family:'Fraunces'; font-size:21px; font-weight:600; }
-.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
 .cal-dow { text-align:center; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding-bottom:4px; }
-.cal-cell { background:var(--panel); border:1px solid var(--line); border-radius:11px; min-height:84px; padding:7px; cursor:pointer; transition:.12s; }
+.cal-cell { background:var(--panel); border:1px solid var(--line); border-radius:11px; min-height:84px; min-width:0; padding:7px; cursor:pointer; transition:.12s; overflow:hidden; }
 .cal-cell:hover { border-color:var(--primary); }
 .cal-cell.blank { background:transparent; border:none; cursor:default; }
 .cal-cell.today { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
