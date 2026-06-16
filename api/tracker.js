@@ -23,9 +23,11 @@ export default async function handler(req, res) {
   try {
     await ensureTable();
     const sql = db();
+    // Which document: 1 = the tracker (default), 2 = shared calendar events. Keeps the two stores separate.
+    const docId = Number(req.query && req.query.id) || 1;
 
     if (req.method === "GET") {
-      const rows = await sql`select doc, v from tracker_doc where id = 1`;
+      const rows = await sql`select doc, v from tracker_doc where id = ${docId}`;
       if (!rows.length) return res.status(200).json(null);
       return res.status(200).json({ ...rows[0].doc, v: Number(rows[0].v) });
     }
@@ -41,13 +43,13 @@ export default async function handler(req, res) {
       const baseV = (baseHeader == null || baseHeader === "") ? null : Number(baseHeader);
       // Single atomic conditional update: matches when no base was declared (back-compat) or the base is current.
       const updated = await sql`update tracker_doc set doc = ${json}::jsonb, v = ${v}
-                                where id = 1 and (${baseV}::bigint is null or v = ${baseV})
+                                where id = ${docId} and (${baseV}::bigint is null or v = ${baseV})
                                 returning v`;
       if (updated.length) return res.status(200).json({ ok: true, v });
       // No row updated: either the table is empty (first write) or there's a version conflict.
-      const cur = await sql`select doc, v from tracker_doc where id = 1`;
+      const cur = await sql`select doc, v from tracker_doc where id = ${docId}`;
       if (!cur.length) {
-        await sql`insert into tracker_doc (id, doc, v) values (1, ${json}::jsonb, ${v})
+        await sql`insert into tracker_doc (id, doc, v) values (${docId}, ${json}::jsonb, ${v})
                   on conflict (id) do update set doc = excluded.doc, v = excluded.v`;
         return res.status(200).json({ ok: true, v });
       }

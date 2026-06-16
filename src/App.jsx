@@ -9,7 +9,7 @@ import {
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
-import { apiLoad, apiSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -398,6 +398,8 @@ export default function App() {
   useEffect(() => { saveGantt(gantt); }, [gantt]);
   const [ganttGoto, setGanttGoto] = useState(null);
   const gotoGantt = (pid) => { if (pid) bumpOpen(pid); setGanttGoto(pid || null); setView("gantt"); };
+  const [trackerGoto, setTrackerGoto] = useState(null);
+  const gotoTrackerRow = (sheetId, rowId) => { setTrackerGoto({ sheetId, rowId, n: Date.now() }); setView("tracker"); };
   const [notif, setNotif] = useState(loadNotif);
   useEffect(() => { saveNotif(notif); }, [notif]);
   const [contacts, setContacts] = useState(loadContacts);
@@ -494,6 +496,7 @@ export default function App() {
     q, setQ, fPerson, setFPerson, fProject, setFProject, setView, user,
     openProfile: () => setProfileOpen(true), updateUser,
     gantt, setGantt, ganttGoto, gotoGantt, clearGanttGoto: () => setGanttGoto(null),
+    trackerGoto, gotoTrackerRow, clearTrackerGoto: () => setTrackerGoto(null),
     notif, setNotif,
     contacts, setContacts, openComposer,
     effLight, theme,
@@ -2789,6 +2792,19 @@ function TrackerView({ ctx }) {
   const [dragId, setDragId] = useState(null);
   const [selRow, setSelRow] = useState(null);
   const [overId, setOverId] = useState(null);
+  // Deep-link from another view (e.g. a Calendar event): switch to the right sheet, highlight the row, scroll to it.
+  useEffect(() => {
+    const g = ctx.trackerGoto;
+    if (!g) return;
+    if (g.sheetId) setActiveSheet(g.sheetId);
+    setSelRow(g.rowId || null);
+    const t = setTimeout(() => {
+      const el = document.getElementById("cell-" + g.rowId + "-projectName");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
+    ctx.clearTrackerGoto();
+    return () => clearTimeout(t);
+  }, [ctx.trackerGoto]);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
@@ -3105,6 +3121,39 @@ function CalendarView({ ctx }) {
   const [notes, setNotes] = useState(loadCalNotes);
   useEffect(() => { saveCalNotes(notes); }, [notes]);
   const [dayOpen, setDayOpen] = useState(null);
+  const [dayEdit, setDayEdit] = useState(null); // iso of the day being edited (double-click)
+  const [events, setEvents] = useState([]);     // shared custom calendar events (DB doc id=2)
+  const evV = useRef(0);
+  const evSaving = useRef(false);
+  useEffect(() => {
+    let on = true;
+    const pull = async () => { if (evSaving.current) return; try { const d = await calLoad(); if (on && d && d.v !== evV.current) { evV.current = d.v || 0; setEvents(d.events || []); } } catch (e) {} };
+    pull();
+    const t = setInterval(pull, 2500);
+    return () => { on = false; clearInterval(t); };
+  }, []);
+  // Apply an add/edit/delete to the shared events doc; if a teammate saved meanwhile, re-apply just this op onto their copy and retry.
+  const mutate = (list, op) => op.kind === "add" ? [...list, op.ev] : op.kind === "edit" ? list.map(e => e.id === op.ev.id ? op.ev : e) : list.filter(e => e.id !== op.id);
+  const commit = async (op) => {
+    const next = mutate(events, op);
+    setEvents(next);
+    evSaving.current = true;
+    let toSave = next, baseV = evV.current;
+    try {
+      for (let i = 0; i < 5; i++) {
+        const res = await calSave({ events: toSave }, baseV);
+        if (res && res.conflict) { const server = (res.doc && res.doc.events) || []; toSave = mutate(server, op); setEvents(toSave); baseV = res.v; continue; }
+        if (res && res.ok) { evV.current = res.v; break; }
+        break;
+      }
+    } catch (e) {} finally { evSaving.current = false; }
+  };
+  const EV_COLORS = [["#9A6BF0", "Purple"], ["#E03A3E", "Red"], ["#E8A53C", "Amber"], ["#33B36B", "Green"], ["#4FA8E8", "Blue"], ["#E0734A", "Orange"]];
+  const projOpts = [];
+  (tsheets || []).forEach(s => (s.rows || []).forEach(r => { const nm = r.projectName || r.name; if (nm) projOpts.push({ label: nm, sheet: s.id, rowId: r._id, key: s.id + "::" + r._id }); }));
+  const [newTitle, setNewTitle] = useState("");
+  const [newColor, setNewColor] = useState("#9A6BF0");
+  const [newLink, setNewLink] = useState("");
 
   const first = new Date(cur.y, cur.m, 1);
   const startDow = first.getDay();
@@ -3117,14 +3166,16 @@ function CalendarView({ ctx }) {
   // Project due dates + bid/permit dates from the shared tracker.
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
     const nm = r.projectName || r.name; if (!nm) return;
-    add(parseTrackerDate(r.dueDates), { type: "due", label: nm, color: "var(--primary)" });
-    add(parseTrackerDate(r.bidPermitDate), { type: "bid/permit", label: nm, color: "var(--teal)" });
+    add(parseTrackerDate(r.dueDates), { type: "due", label: nm, color: "var(--primary)", sheet: s.id, rowId: r._id });
+    add(parseTrackerDate(r.bidPermitDate), { type: "bid/permit", label: nm, color: "var(--teal)", sheet: s.id, rowId: r._id });
   }));
   // Legacy Gantt due dates, if any.
   (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
     add(p.due, { type: "project", label: p.name, color: "var(--primary)", pid: p.id, done: !!p.done });
     p.groups.forEach(g => add(g.end, { type: "task", label: g.name, color: "var(--teal)", pid: p.id, done: gComplete(g) }));
   });
+  // Custom shared events.
+  (events || []).forEach(e => add(e.date, { type: "event", label: e.title || "(untitled)", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId, custom: true, id: e.id }));
 
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push(null);
@@ -3135,7 +3186,7 @@ function CalendarView({ ctx }) {
 
   return (
     <>
-      <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Project due dates & bid/permit dates from the tracker, by day. Click a day to leave a note.</div></div>
+      <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Project due dates & bid/permit dates from the tracker. Double-click a day to add, edit, or delete shared events.</div></div>
         <div style={{ display: "flex", gap: 12, fontSize: 11.5, color: "var(--muted)", alignItems: "center" }}>
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--primary)" }} />due date</span>
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--teal)" }} />bid / permit</span>
@@ -3158,11 +3209,11 @@ function CalendarView({ ctx }) {
             const evs = byDay[iso] || [];
             const note = notes[iso];
             return (
-              <div className={`cal-cell ${iso === today ? "today" : ""}`} key={iso} onClick={() => setDayOpen(iso)} style={{ cursor: "pointer" }}>
+              <div className={`cal-cell ${iso === today ? "today" : ""}`} key={iso} onClick={() => setDayOpen(iso)} onDoubleClick={() => setDayEdit(iso)} title="Double-click to add or edit events" style={{ cursor: "pointer" }}>
                 <div className="cal-num">{d}</div>
                 {evs.slice(0, 3).map((ev, j) => (
                   <div className={`cal-ev ${ev.done ? "done" : ""}`} key={j} style={{ background: ev.color }} title={`${ev.label} — ${ev.type}`}
-                    onClick={(e) => { e.stopPropagation(); ev.pid ? gotoGantt(ev.pid) : ctx.setView("tracker"); }}>{ev.label}</div>
+                    onClick={(e) => { e.stopPropagation(); ev.pid ? gotoGantt(ev.pid) : (ev.rowId ? ctx.gotoTrackerRow(ev.sheet, ev.rowId) : (ev.custom ? setDayEdit(iso) : ctx.setView("tracker"))); }}>{ev.label}</div>
                 ))}
                 {evs.length > 3 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>+{evs.length - 3} more</div>}
                 {note && note.text && <div style={{ marginTop: 3, background: "rgba(232,165,60,.16)", border: "1px solid rgba(232,165,60,.3)", borderRadius: 6, padding: "3px 5px", fontSize: SIZE[note.size] || 12.5, color: "var(--ink)", lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{note.text}</div>}
@@ -3184,7 +3235,7 @@ function CalendarView({ ctx }) {
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Due this day</div>
                   {evs.map((ev, j) => (
-                    <div key={j} className="row-i" style={{ padding: "6px 4px" }} onClick={() => { ev.pid ? gotoGantt(ev.pid) : ctx.setView("tracker"); setDayOpen(null); }}>
+                    <div key={j} className="row-i" style={{ padding: "6px 4px" }} onClick={() => { ev.pid ? gotoGantt(ev.pid) : (ev.rowId ? ctx.gotoTrackerRow(ev.sheet, ev.rowId) : ctx.setView("tracker")); setDayOpen(null); }}>
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: ev.color }} />
                       <span style={{ flex: 1, fontSize: 13.5, textDecoration: ev.done ? "line-through" : "none", color: ev.done ? "var(--muted)" : "var(--ink)" }}>{ev.label} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {ev.type}</span></span>
                       <ChevronRight size={15} color="var(--dim)" />
@@ -3204,6 +3255,42 @@ function CalendarView({ ctx }) {
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-pri" style={{ flex: 1, justifyContent: "center" }} onClick={() => setDayOpen(null)}><Check size={15} />Done</button>
                 {notes[dayOpen] && <button className="btn" onClick={() => { delNote(dayOpen); setDayOpen(null); }}><Trash2 size={15} />Delete note</button>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {dayEdit && (() => {
+        const dlabel = new Date(dayEdit + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+        const dayEvents = events.filter(e => e.date === dayEdit);
+        const addNew = () => { const title = newTitle.trim(); if (!title) return; const link = projOpts.find(o => o.key === newLink); commit({ kind: "add", ev: { id: uid(), date: dayEdit, title, color: newColor, sheet: link ? link.sheet : undefined, rowId: link ? link.rowId : undefined } }); setNewTitle(""); setNewLink(""); };
+        return (
+          <div className="ov" onClick={() => setDayEdit(null)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal-h"><h2>Events · {dlabel}</h2><button className="btn btn-ghost icon-btn" onClick={() => setDayEdit(null)}><X size={18} /></button></div>
+              {dayEvents.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>No events yet — add one below.</div>}
+              {dayEvents.map(e => (
+                <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                  <input defaultValue={e.title} onBlur={ev => { const v = ev.target.value.trim(); if (v && v !== e.title) commit({ kind: "edit", ev: { ...e, title: v } }); }} style={{ flex: 1, minWidth: 0 }} />
+                  <select value={e.color || "#9A6BF0"} onChange={ev => commit({ kind: "edit", ev: { ...e, color: ev.target.value } })} style={{ width: 84 }}>
+                    {EV_COLORS.map(([c, name]) => <option key={c} value={c}>{name}</option>)}
+                  </select>
+                  <select value={e.rowId ? (e.sheet + "::" + e.rowId) : ""} onChange={ev => { const o = projOpts.find(x => x.key === ev.target.value); commit({ kind: "edit", ev: { ...e, sheet: o ? o.sheet : undefined, rowId: o ? o.rowId : undefined } }); }} style={{ width: 150 }}>
+                    <option value="">No link</option>
+                    {projOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                  </select>
+                  <button className="btn btn-ghost icon-btn" title="Delete event" onClick={() => commit({ kind: "del", id: e.id })} style={{ color: "#c0392b" }}><Trash2 size={15} /></button>
+                </div>
+              ))}
+              <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 12 }}>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Add an event</div>
+                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  <input value={newTitle} onChange={e => setNewTitle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addNew(); }} placeholder="Event title…" style={{ flex: 1, minWidth: 140 }} autoFocus />
+                  <select value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 84 }}>{EV_COLORS.map(([c, name]) => <option key={c} value={c}>{name}</option>)}</select>
+                  <select value={newLink} onChange={e => setNewLink(e.target.value)} style={{ width: 150 }}><option value="">No link</option>{projOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}</select>
+                  <button className="btn btn-pri" onClick={addNew}><Plus size={15} />Add</button>
+                </div>
               </div>
             </div>
           </div>
