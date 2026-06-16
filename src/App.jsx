@@ -3083,10 +3083,24 @@ function TrackerView({ ctx }) {
   );
 }
 
+// Tolerant parser for the tracker's free-text date fields ("2/19/2025", "IFP 10/24", "1/30???", "TBD").
+function parseTrackerDate(s) {
+  if (!s) return null;
+  const m = String(s).match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+  if (!m) return null;
+  const mo = +m[1], d = +m[2];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  let year = m[3] ? +m[3] : new Date().getFullYear();
+  if (year < 100) year += 2000;
+  return `${year}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
 function CalendarView({ ctx }) {
   const gd = ctx.gantt;
   const gotoGantt = ctx.gotoGantt;
   const gComplete = (g) => g.members.length > 0 && g.members.every(m => m.done);
+  // Read the shared tracker (read-only — never writes, so it can't affect the Tracker's sync).
+  const [tsheets, setTsheets] = useState(() => { try { const v = localStorage.getItem(SHEETS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } });
+  useEffect(() => { let on = true; (async () => { try { const doc = await apiLoad(); if (on && doc && doc.sheets) setTsheets(doc.sheets); } catch (e) {} })(); return () => { on = false; }; }, []);
   const [cur, setCur] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [notes, setNotes] = useState(loadCalNotes);
   useEffect(() => { saveCalNotes(notes); }, [notes]);
@@ -3100,7 +3114,14 @@ function CalendarView({ ctx }) {
 
   const byDay = {};
   const add = (iso, ev) => { if (!iso) return; (byDay[iso] = byDay[iso] || []).push(ev); };
-  gd.projects.filter(p => !p.deleted).forEach(p => {
+  // Project due dates + bid/permit dates from the shared tracker.
+  (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
+    const nm = r.projectName || r.name; if (!nm) return;
+    add(parseTrackerDate(r.dueDates), { type: "due", label: nm, color: "var(--primary)" });
+    add(parseTrackerDate(r.bidPermitDate), { type: "bid/permit", label: nm, color: "var(--teal)" });
+  }));
+  // Legacy Gantt due dates, if any.
+  (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
     add(p.due, { type: "project", label: p.name, color: "var(--primary)", pid: p.id, done: !!p.done });
     p.groups.forEach(g => add(g.end, { type: "task", label: g.name, color: "var(--teal)", pid: p.id, done: gComplete(g) }));
   });
@@ -3114,10 +3135,10 @@ function CalendarView({ ctx }) {
 
   return (
     <>
-      <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Project & task due dates, by day. Click a day to leave a note.</div></div>
+      <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Project due dates & bid/permit dates from the tracker, by day. Click a day to leave a note.</div></div>
         <div style={{ display: "flex", gap: 12, fontSize: 11.5, color: "var(--muted)", alignItems: "center" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--primary)" }} />project due</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--teal)" }} />task due</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--primary)" }} />due date</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--teal)" }} />bid / permit</span>
         </div>
       </div>
       <div className="panel">
@@ -3140,8 +3161,8 @@ function CalendarView({ ctx }) {
               <div className={`cal-cell ${iso === today ? "today" : ""}`} key={iso} onClick={() => setDayOpen(iso)} style={{ cursor: "pointer" }}>
                 <div className="cal-num">{d}</div>
                 {evs.slice(0, 3).map((ev, j) => (
-                  <div className={`cal-ev ${ev.done ? "done" : ""}`} key={j} style={{ background: ev.color }} title={`Open ${ev.label} in Gantt`}
-                    onClick={(e) => { e.stopPropagation(); gotoGantt(ev.pid); }}>{ev.label}</div>
+                  <div className={`cal-ev ${ev.done ? "done" : ""}`} key={j} style={{ background: ev.color }} title={`${ev.label} — ${ev.type}`}
+                    onClick={(e) => { e.stopPropagation(); ev.pid ? gotoGantt(ev.pid) : ctx.setView("tracker"); }}>{ev.label}</div>
                 ))}
                 {evs.length > 3 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>+{evs.length - 3} more</div>}
                 {note && note.text && <div style={{ marginTop: 3, background: "rgba(232,165,60,.16)", border: "1px solid rgba(232,165,60,.3)", borderRadius: 6, padding: "3px 5px", fontSize: SIZE[note.size] || 12.5, color: "var(--ink)", lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{note.text}</div>}
@@ -3163,7 +3184,7 @@ function CalendarView({ ctx }) {
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Due this day</div>
                   {evs.map((ev, j) => (
-                    <div key={j} className="row-i" style={{ padding: "6px 4px" }} onClick={() => { gotoGantt(ev.pid); setDayOpen(null); }}>
+                    <div key={j} className="row-i" style={{ padding: "6px 4px" }} onClick={() => { ev.pid ? gotoGantt(ev.pid) : ctx.setView("tracker"); setDayOpen(null); }}>
                       <span style={{ width: 9, height: 9, borderRadius: 99, background: ev.color }} />
                       <span style={{ flex: 1, fontSize: 13.5, textDecoration: ev.done ? "line-through" : "none", color: ev.done ? "var(--muted)" : "var(--ink)" }}>{ev.label} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {ev.type}</span></span>
                       <ChevronRight size={15} color="var(--dim)" />
