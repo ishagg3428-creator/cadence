@@ -726,20 +726,6 @@ function HomeDashboard({ ctx }) {
             ))}
           </div>
           <div className="panel">
-            <div className="h-title" style={{ fontSize: 16, marginBottom: 10 }}>Top expected revenue</div>
-            {topRev.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13 }}>No forecast revenue in this window.</div>}
-            {topRev.map((p, j) => (
-              <div className="row-i" key={j} onClick={() => openProj(p)} title={trackerByNum[p.number] ? "Open in tracker" : "Open Projections"}>
-                <span className="row-dot" style={{ background: "var(--teal)" }} />
-                <span className="row-t" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
-                <span className="row-meta">
-                  {trackerByNum[p.number] && trackerByNum[p.number].stage ? <span className="chip">{trackerByNum[p.number].stage}</span> : null}
-                  <span className="chip" style={{ color: "var(--teal)", fontWeight: 700 }}>{fmt$(p.total)}</span>
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="panel">
             <div className="h-title" style={{ fontSize: 16, marginBottom: 8 }}>Jump to</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <button className="btn" onClick={() => ctx.setView("calendar")} style={{ justifyContent: "flex-start" }}><CalendarDays size={15} />Calendar</button>
