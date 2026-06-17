@@ -702,7 +702,7 @@ function HomeDashboard({ ctx }) {
                 <div className="row-i" key={j} onClick={() => open(i)} title={i.rowId ? "Open in tracker" : "Open calendar"}>
                   <span className="row-dot" style={{ background: i.color }} />
                   <span style={{ width: 72, flexShrink: 0, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{rel(i.date)}</span>
-                  <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+                  <span className="row-t" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
                   <span className="row-meta">
                     {i.stage ? <span className="chip">{i.stage}</span> : null}
                     <span className="chip" style={{ color: i.color }}>{i.kind}</span>
@@ -720,7 +720,7 @@ function HomeDashboard({ ctx }) {
             {recentOverdue.slice(0, 8).map((i, j) => (
               <div className="row-i" key={j} onClick={() => open(i)}>
                 <span className="row-dot" style={{ background: "var(--primary)" }} />
-                <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+                <span className="row-t" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
                 <span className="row-meta"><span className="chip chip-due over">{dateLong(i.date)}</span></span>
               </div>
             ))}
@@ -731,7 +731,7 @@ function HomeDashboard({ ctx }) {
             {topRev.map((p, j) => (
               <div className="row-i" key={j} onClick={() => openProj(p)} title={trackerByNum[p.number] ? "Open in tracker" : "Open Projections"}>
                 <span className="row-dot" style={{ background: "var(--teal)" }} />
-                <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                <span className="row-t" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
                 <span className="row-meta">
                   {trackerByNum[p.number] && trackerByNum[p.number].stage ? <span className="chip">{trackerByNum[p.number].stage}</span> : null}
                   <span className="chip" style={{ color: "var(--teal)", fontWeight: 700 }}>{fmt$(p.total)}</span>
