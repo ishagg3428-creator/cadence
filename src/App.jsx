@@ -9,6 +9,7 @@ import {
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
+import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
 import { apiLoad, apiSave, calLoad, calSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
@@ -561,7 +562,7 @@ export default function App() {
       <div className="main">
         {view === "home" && <HomeView ctx={ctx} />}
         {view === "tracker" && <TrackerView ctx={ctx} />}
-        {view === "gantt" && <GanttView ctx={ctx} />}
+        {view === "gantt" && <ForecastView ctx={ctx} />}
         {view === "alerts" && <NotificationsView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
         {/* {view === "team" && <TeamView ctx={ctx} />} */}{/* Team tab hidden — re-enable with the NAV entry above. */}
@@ -964,6 +965,87 @@ function MemberAv({ m, size = 20 }) {
       {initials(m.name)}
       {m.done && <span style={{ position: "absolute", left: "-12%", top: "47%", width: "124%", height: Math.max(2, size * 0.11), background: "#33B36B", transform: "rotate(-45deg)" }} />}
     </span>
+  );
+}
+
+/* ---------------- Forecast Gantt (projects as revenue bars across months) ---------------- */
+function ForecastView({ ctx }) {
+  const [pm, setPm] = useState("all");
+  const [studio, setStudio] = useState("all");
+  const [q, setQ] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const pms = [...new Set(FORECAST_PROJECTS.map(p => p.pm).filter(Boolean))].sort();
+  const studios = [...new Set(FORECAST_PROJECTS.map(p => p.studio).filter(Boolean))].sort();
+  const fmt = (n) => "$" + Math.round(n || 0).toLocaleString();
+  const M = FORECAST_MONTHS.length;
+  const list = FORECAST_PROJECTS.filter(p => {
+    if (pm !== "all" && p.pm !== pm) return false;
+    if (studio !== "all" && p.studio !== studio) return false;
+    if (q && !((p.name + " " + p.number).toLowerCase().includes(q.toLowerCase()))) return false;
+    const tot = p.months.reduce((a, b) => a + b, 0);
+    if (!showAll && tot === 0) return false;
+    return true;
+  }).map(p => {
+    const total = p.months.reduce((a, b) => a + b, 0);
+    let first = -1, last = -1;
+    p.months.forEach((m, i) => { if (m !== 0) { if (first < 0) first = i; last = i; } });
+    return { ...p, total, first, last };
+  }).sort((a, b) => b.total - a.total);
+  const colTotals = FORECAST_MONTHS.map((_, i) => list.reduce((s, p) => s + p.months[i], 0));
+  const grand = colTotals.reduce((a, b) => a + b, 0);
+  const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
+  const NW = 300;
+  const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))` };
+  return (
+    <>
+      <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div><div className="h-title">Forecast</div><div className="h-sub">Projected revenue by project across {FORECAST_RANGE}. Bars span each project's active months.</div></div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Total forecast · {list.length} project{list.length === 1 ? "" : "s"}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--teal)" }}>{fmt(grand)}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+        <select value={pm} onChange={e => setPm(e.target.value)} style={selStyle}><option value="all">All PMs</option>{pms.map(p => <option key={p} value={p}>{p}</option>)}</select>
+        <select value={studio} onChange={e => setStudio(e.target.value)} style={selStyle}><option value="all">All studios</option>{studios.map(s => <option key={s} value={s}>{s}</option>)}</select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search project or number…" style={{ ...selStyle, minWidth: 220 }} />
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--muted)", cursor: "pointer" }}>
+          <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />Show $0 projects
+        </label>
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", background: "var(--panel2)", position: "sticky", top: 0, zIndex: 2 }}>
+          <div style={{ width: NW, minWidth: NW, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Project</div>
+          <div style={cellGrid}>
+            {FORECAST_MONTHS.map((m, i) => (
+              <div key={m} style={{ padding: "6px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 700, borderLeft: "1px solid var(--line)" }}>
+                {m}<div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ maxHeight: "66vh", overflow: "auto" }}>
+          {list.map(p => (
+            <div key={p.number + "|" + p.pm} style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ width: NW, minWidth: NW, padding: "6px 12px", overflow: "hidden" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>{p.name}</div>
+                <div style={{ fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+              </div>
+              <div style={{ ...cellGrid, position: "relative", height: 40 }}>
+                {FORECAST_MONTHS.map((m, i) => <div key={i} title={`${m}: ${fmt(p.months[i])}`} style={{ borderLeft: "1px solid var(--line)" }} />)}
+                {p.first >= 0 && (
+                  <div title={p.months.map((v, i) => `${FORECAST_MONTHS[i]}: ${fmt(v)}`).join("\n")}
+                    style={{ position: "absolute", top: 9, height: 22, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, overflow: "hidden", whiteSpace: "nowrap", padding: "0 6px" }}>
+                    {fmt(p.total)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {list.length === 0 && <div style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</div>}
+        </div>
+      </div>
+    </>
   );
 }
 
