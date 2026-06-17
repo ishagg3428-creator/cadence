@@ -348,7 +348,6 @@ const NAV = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "tracker", label: "Tracker", Icon: Table },
   { id: "gantt", label: "Gantt", Icon: GanttChartSquare },
-  { id: "projections", label: "Projections", Icon: TrendingUp },
   { id: "alerts", label: "Inbox", Icon: Bell },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
   // { id: "team", label: "Team", Icon: Users }, // Team tab hidden — re-enable this line (and the route below) to bring it back.
@@ -1239,7 +1238,10 @@ function ProjectionsView({ ctx }) {
   return (
     <>
       <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div><div className="h-title">Projections</div><div className="h-sub">Compensation, backlog & expected revenue by project · {FORECAST_RANGE}.</div></div>
+        <div>
+          <button className="btn btn-ghost btn-sm" onClick={() => ctx.setView("tracker")} style={{ marginBottom: 6 }}><ChevronLeft size={14} />Back to Tracker</button>
+          <div className="h-title">Projections</div><div className="h-sub">Compensation, backlog & expected revenue by project · {FORECAST_RANGE}.</div>
+        </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Expected revenue · {list.length} project{list.length === 1 ? "" : "s"}</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "var(--teal)" }}>{fmt(tTotal)}</div>
@@ -3321,6 +3323,7 @@ function TrackerView({ ctx }) {
           </div>
           <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {data.length} projects</span>
           <div style={{ flex: 1 }} />
+          <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Revenue projections for these projects"><TrendingUp size={14} />Projections</button>
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
           {undoStack.length > 0 && (
