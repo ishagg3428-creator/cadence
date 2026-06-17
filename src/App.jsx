@@ -629,7 +629,17 @@ function HomeDashboard({ ctx }) {
   const thisWeek = upcoming.filter(i => dT(i.date) <= todayT + 7 * 86400000);
   const weekRev = [...new Map(thisWeek.filter(i => i.num && i.rev).map(i => [i.num, i.rev])).values()].reduce((a, b) => a + b, 0);
 
+  // Forecast-driven content (the data with real future values), joined back to the tracker by project number.
+  const trackerByNum = {};
+  (tsheets || []).forEach(s => (s.rows || []).forEach(r => { const n = (r.vantagepoint || "").trim(); if (n && !trackerByNum[n]) trackerByNum[n] = { sheet: s.id, rowId: r._id, stage: r.stage || "" }; }));
+  const monthTot = FORECAST_MONTHS.map((_, i) => FORECAST_PROJECTS.reduce((s, p) => s + p.months[i], 0));
+  const maxM = Math.max(1, ...monthTot);
+  const nowMon = new Date().toLocaleDateString(undefined, { month: "short" });
+  const curMonthIdx = FORECAST_MONTHS.findIndex(m => m.startsWith(nowMon));
+  const topRev = FORECAST_PROJECTS.map(p => ({ ...p, total: p.months.reduce((a, b) => a + b, 0) })).filter(p => p.total > 0).sort((a, b) => b.total - a.total).slice(0, 8);
+
   const open = (i) => { if (i.rowId) ctx.gotoTrackerRow(i.sheet, i.rowId); else ctx.setView("calendar"); };
+  const openProj = (p) => { const t = trackerByNum[p.number]; if (t) ctx.gotoTrackerRow(t.sheet, t.rowId); else ctx.setView("projections"); };
   const rel = (iso) => { const diff = Math.round((dT(iso) - todayT) / 86400000); if (diff === 0) return "Today"; if (diff === 1) return "Tomorrow"; if (diff > 1 && diff < 14) return "In " + diff + " days"; if (diff < 0) return (-diff) + "d ago"; return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
   const dateLong = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
@@ -655,6 +665,23 @@ function HomeDashboard({ ctx }) {
             <div className="sv" style={{ marginTop: 8 }}>{s.val}</div>
           </div>
         ))}
+      </div>
+      <div className="panel" style={{ marginBottom: 14 }} onClick={() => ctx.setView("projections")} title="Open Projections">
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
+          <div className="h-title" style={{ fontSize: 16 }}>Revenue by month</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{FORECAST_RANGE} · forecast</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${FORECAST_MONTHS.length},minmax(0,1fr))`, gap: 8, alignItems: "end", cursor: "pointer" }}>
+          {FORECAST_MONTHS.map((m, i) => (
+            <div key={m} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: i === curMonthIdx ? "var(--teal)" : "var(--ink)" }}>{fmt$(monthTot[i])}</div>
+              <div style={{ height: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", margin: "4px 0" }}>
+                <div style={{ width: "62%", height: `${Math.max(4, (monthTot[i] / maxM) * 70)}px`, background: i === curMonthIdx ? "var(--teal)" : "var(--primary)", borderRadius: "5px 5px 0 0", opacity: i === curMonthIdx ? 1 : 0.6 }} />
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: i === curMonthIdx ? "var(--teal)" : "var(--muted)" }}>{m}</div>
+            </div>
+          ))}
+        </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
@@ -695,6 +722,20 @@ function HomeDashboard({ ctx }) {
                 <span className="row-dot" style={{ background: "var(--primary)" }} />
                 <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
                 <span className="row-meta"><span className="chip chip-due over">{dateLong(i.date)}</span></span>
+              </div>
+            ))}
+          </div>
+          <div className="panel">
+            <div className="h-title" style={{ fontSize: 16, marginBottom: 10 }}>Top expected revenue</div>
+            {topRev.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13 }}>No forecast revenue in this window.</div>}
+            {topRev.map((p, j) => (
+              <div className="row-i" key={j} onClick={() => openProj(p)} title={trackerByNum[p.number] ? "Open in tracker" : "Open Projections"}>
+                <span className="row-dot" style={{ background: "var(--teal)" }} />
+                <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+                <span className="row-meta">
+                  {trackerByNum[p.number] && trackerByNum[p.number].stage ? <span className="chip">{trackerByNum[p.number].stage}</span> : null}
+                  <span className="chip" style={{ color: "var(--teal)", fontWeight: 700 }}>{fmt$(p.total)}</span>
+                </span>
               </div>
             ))}
           </div>
