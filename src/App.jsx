@@ -605,20 +605,29 @@ function HomeDashboard({ ctx }) {
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const fmt$ = (n) => "$" + Math.round(n || 0).toLocaleString();
+  // Bridge: forecast expected revenue keyed by project number == tracker vantagepoint.
+  const fcByNum = useMemo(() => { const m = {}; FORECAST_PROJECTS.forEach(p => { m[p.number] = p.months.reduce((a, b) => a + b, 0); }); return m; }, []);
 
   const items = [];
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
     const nm = r.projectName || r.name; if (!nm) return;
-    const due = parseTrackerDate(r.dueDates); if (due) items.push({ date: due, name: nm, kind: "Due", color: "var(--primary)", sheet: s.id, rowId: r._id });
-    const bp = parseTrackerDate(r.bidPermitDate); if (bp) items.push({ date: bp, name: nm, kind: "Bid / permit", color: "var(--teal)", sheet: s.id, rowId: r._id });
+    const num = (r.vantagepoint || "").trim();
+    const rev = num && fcByNum[num] ? fcByNum[num] : 0;
+    const stage = r.stage || "";
+    const due = parseTrackerDate(r.dueDates); if (due) items.push({ date: due, name: nm, kind: "Due", color: "var(--primary)", sheet: s.id, rowId: r._id, rev, stage, num });
+    const bp = parseTrackerDate(r.bidPermitDate); if (bp) items.push({ date: bp, name: nm, kind: "Bid / permit", color: "var(--teal)", sheet: s.id, rowId: r._id, rev, stage, num });
   }));
-  (events || []).forEach(e => { if (e.date) items.push({ date: e.date, name: e.title || "(event)", kind: "Event", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId }); });
+  (events || []).forEach(e => { if (e.date) items.push({ date: e.date, name: e.title || "(event)", kind: "Event", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId, rev: 0, stage: "" }); });
 
   const cutT = todayT + win * 86400000;
   const upcoming = items.filter(i => { const d = dT(i.date); return d >= todayT && d <= cutT; }).sort((a, b) => a.date.localeCompare(b.date));
   const dueWeek = items.filter(i => { const d = dT(i.date); return d >= todayT && d <= todayT + 7 * 86400000; }).length;
   const recentOverdue = items.filter(i => { const d = dT(i.date); return d < todayT && d >= todayT - 45 * 86400000; }).sort((a, b) => b.date.localeCompare(a.date));
   const fcTotal = FORECAST_PROJECTS.reduce((s, p) => s + p.months.reduce((a, b) => a + b, 0), 0);
+  const bucketOf = (iso) => { const diff = Math.round((dT(iso) - todayT) / 86400000); return diff <= 7 ? "This week" : diff <= 14 ? "Next week" : diff <= 31 ? "Later this month" : "Beyond"; };
+  const grouped = ["This week", "Next week", "Later this month", "Beyond"].map(b => ({ b, rows: upcoming.filter(i => bucketOf(i.date) === b) })).filter(g => g.rows.length);
+  const thisWeek = upcoming.filter(i => dT(i.date) <= todayT + 7 * 86400000);
+  const weekRev = [...new Map(thisWeek.filter(i => i.num && i.rev).map(i => [i.num, i.rev])).values()].reduce((a, b) => a + b, 0);
 
   const open = (i) => { if (i.rowId) ctx.gotoTrackerRow(i.sheet, i.rowId); else ctx.setView("calendar"); };
   const rel = (iso) => { const diff = Math.round((dT(iso) - todayT) / 86400000); if (diff === 0) return "Today"; if (diff === 1) return "Tomorrow"; if (diff > 1 && diff < 14) return "In " + diff + " days"; if (diff < 0) return (-diff) + "d ago"; return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
@@ -654,15 +663,28 @@ function HomeDashboard({ ctx }) {
             <div className="mode-pick" style={{ gap: 2 }}>{[7, 30, 90].map(d => <button key={d} className={win === d ? "on" : ""} onClick={() => setWin(d)}>{d}d</button>)}</div>
           </div>
           {upcoming.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13, padding: "10px 2px" }}>Nothing due in the next {win} days.</div>}
-          {upcoming.slice(0, 40).map((i, j) => (
-            <div className="row-i" key={j} onClick={() => open(i)} title={i.rowId ? "Open in tracker" : "Open calendar"}>
-              <span className="row-dot" style={{ background: i.color }} />
-              <span style={{ width: 70, flexShrink: 0, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{rel(i.date)}</span>
-              <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
-              <span className="row-meta"><span className="chip" style={{ background: i.color + "22", color: i.color }}>{i.kind}</span><span className="chip">{dateLong(i.date)}</span></span>
+          {upcoming.length > 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 4 }}>
+              <b style={{ color: "var(--ink)" }}>{thisWeek.length}</b> due this week{weekRev ? <> · tied to <b style={{ color: "var(--teal)" }}>{fmt$(weekRev)}</b> expected revenue</> : null}
+            </div>
+          )}
+          {grouped.map(g => (
+            <div key={g.b}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: ".4px", margin: "10px 2px 2px" }}>{g.b} · {g.rows.length}</div>
+              {g.rows.slice(0, 30).map((i, j) => (
+                <div className="row-i" key={j} onClick={() => open(i)} title={i.rowId ? "Open in tracker" : "Open calendar"}>
+                  <span className="row-dot" style={{ background: i.color }} />
+                  <span style={{ width: 72, flexShrink: 0, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{rel(i.date)}</span>
+                  <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+                  <span className="row-meta">
+                    {i.stage ? <span className="chip">{i.stage}</span> : null}
+                    <span className="chip" style={{ color: i.color }}>{i.kind}</span>
+                    {i.rev ? <span className="chip" style={{ color: "var(--teal)", fontWeight: 700 }} title="Expected revenue (6-mo forecast)">{fmt$(i.rev)}</span> : null}
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
-          {upcoming.length > 40 && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>+{upcoming.length - 40} more — open the Calendar.</div>}
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="panel">
