@@ -973,7 +973,7 @@ function ForecastView({ ctx }) {
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useState(true);
   const pms = [...new Set(FORECAST_PROJECTS.map(p => p.pm).filter(Boolean))].sort();
   const studios = [...new Set(FORECAST_PROJECTS.map(p => p.studio).filter(Boolean))].sort();
   const fmt = (n) => "$" + Math.round(n || 0).toLocaleString();
@@ -1037,6 +1037,11 @@ function ForecastView({ ctx }) {
                   <div title={p.months.map((v, i) => `${FORECAST_MONTHS[i]}: ${fmt(v)}`).join("\n")}
                     style={{ position: "absolute", top: 9, height: 22, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, overflow: "hidden", whiteSpace: "nowrap", padding: "0 6px" }}>
                     {fmt(p.total)}
+                  </div>
+                )}
+                {p.first < 0 && (
+                  <div style={{ position: "absolute", top: 0, left: 0, height: "100%", display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
+                    {p.backlog ? "Backlog " + fmt(p.backlog) : (p.comp ? "Comp " + fmt(p.comp) : "—")} · no forecast this period
                   </div>
                 )}
               </div>
