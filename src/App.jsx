@@ -561,7 +561,7 @@ export default function App() {
       </div>
 
       <div className="main">
-        {view === "home" && <HomeView ctx={ctx} />}
+        {view === "home" && <HomeDashboard ctx={ctx} />}
         {view === "tracker" && <TrackerView ctx={ctx} />}
         {view === "gantt" && <ForecastView ctx={ctx} />}
         {view === "projections" && <ProjectionsView ctx={ctx} />}
@@ -585,6 +585,112 @@ export default function App() {
 }
 
 /* ---------------- Home dashboard ---------------- */
+/* ---------------- Home dashboard (upcoming dates from tracker + calendar) ---------------- */
+function HomeDashboard({ ctx }) {
+  const { user } = ctx;
+  const [tsheets, setTsheets] = useState(() => { try { const v = localStorage.getItem(SHEETS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } });
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    let on = true;
+    (async () => {
+      try { const d = await apiLoad(); if (on && d && d.sheets) setTsheets(d.sheets); } catch (e) {}
+      try { const c = await calLoad(); if (on && c && c.events) setEvents(c.events); } catch (e) {}
+    })();
+    return () => { on = false; };
+  }, []);
+  const [win, setWin] = useState(30);
+  const today = todayISO();
+  const todayT = new Date(today + "T00:00:00").getTime();
+  const dT = (iso) => new Date(iso + "T00:00:00").getTime();
+  const hour = new Date().getHours();
+  const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const fmt$ = (n) => "$" + Math.round(n || 0).toLocaleString();
+
+  const items = [];
+  (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
+    const nm = r.projectName || r.name; if (!nm) return;
+    const due = parseTrackerDate(r.dueDates); if (due) items.push({ date: due, name: nm, kind: "Due", color: "var(--primary)", sheet: s.id, rowId: r._id });
+    const bp = parseTrackerDate(r.bidPermitDate); if (bp) items.push({ date: bp, name: nm, kind: "Bid / permit", color: "var(--teal)", sheet: s.id, rowId: r._id });
+  }));
+  (events || []).forEach(e => { if (e.date) items.push({ date: e.date, name: e.title || "(event)", kind: "Event", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId }); });
+
+  const cutT = todayT + win * 86400000;
+  const upcoming = items.filter(i => { const d = dT(i.date); return d >= todayT && d <= cutT; }).sort((a, b) => a.date.localeCompare(b.date));
+  const dueWeek = items.filter(i => { const d = dT(i.date); return d >= todayT && d <= todayT + 7 * 86400000; }).length;
+  const recentOverdue = items.filter(i => { const d = dT(i.date); return d < todayT && d >= todayT - 45 * 86400000; }).sort((a, b) => b.date.localeCompare(a.date));
+  const fcTotal = FORECAST_PROJECTS.reduce((s, p) => s + p.months.reduce((a, b) => a + b, 0), 0);
+
+  const open = (i) => { if (i.rowId) ctx.gotoTrackerRow(i.sheet, i.rowId); else ctx.setView("calendar"); };
+  const rel = (iso) => { const diff = Math.round((dT(iso) - todayT) / 86400000); if (diff === 0) return "Today"; if (diff === 1) return "Tomorrow"; if (diff > 1 && diff < 14) return "In " + diff + " days"; if (diff < 0) return (-diff) + "d ago"; return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
+  const dateLong = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  const stats = [
+    { label: "Upcoming (" + win + "d)", val: upcoming.length, color: "var(--teal)", I: CalendarDays, go: () => ctx.setView("calendar") },
+    { label: "Due this week", val: dueWeek, color: "var(--amber)", I: Clock, go: () => ctx.setView("calendar") },
+    { label: "Recently overdue", val: recentOverdue.length, color: "var(--primary)", I: Flame, go: () => ctx.setView("calendar") },
+    { label: "Forecast (6 mo)", val: fmt$(fcTotal), color: "var(--slate)", I: TrendingUp, go: () => ctx.setView("projections") },
+  ];
+
+  return (
+    <>
+      <div className="head">
+        <div>
+          <div className="h-title">{greet}, {user.name.split(" ")[0]}.</div>
+          <div className="h-sub">{new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · upcoming dates from your tracker & calendar.</div>
+        </div>
+      </div>
+      <div className="stats">
+        {stats.map(s => (
+          <div className="stat" key={s.label} onClick={s.go} style={{ cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span className="si" style={{ background: s.color + "22", width: 30, height: 30 }}><s.I size={16} color={s.color} /></span><span className="sl" style={{ margin: 0 }}>{s.label}</span></div>
+            <div className="sv" style={{ marginTop: 8 }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14, alignItems: "start" }}>
+        <div className="panel">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div className="h-title" style={{ fontSize: 16 }}>Upcoming</div>
+            <div className="mode-pick" style={{ gap: 2 }}>{[7, 30, 90].map(d => <button key={d} className={win === d ? "on" : ""} onClick={() => setWin(d)}>{d}d</button>)}</div>
+          </div>
+          {upcoming.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13, padding: "10px 2px" }}>Nothing due in the next {win} days.</div>}
+          {upcoming.slice(0, 40).map((i, j) => (
+            <div className="row-i" key={j} onClick={() => open(i)} title={i.rowId ? "Open in tracker" : "Open calendar"}>
+              <span className="row-dot" style={{ background: i.color }} />
+              <span style={{ width: 70, flexShrink: 0, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{rel(i.date)}</span>
+              <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+              <span className="row-meta"><span className="chip" style={{ background: i.color + "22", color: i.color }}>{i.kind}</span><span className="chip">{dateLong(i.date)}</span></span>
+            </div>
+          ))}
+          {upcoming.length > 40 && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>+{upcoming.length - 40} more — open the Calendar.</div>}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div className="panel">
+            <div className="h-title" style={{ fontSize: 16, marginBottom: 10 }}>Recently overdue</div>
+            {recentOverdue.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13 }}>Nothing overdue in the last 45 days.</div>}
+            {recentOverdue.slice(0, 8).map((i, j) => (
+              <div className="row-i" key={j} onClick={() => open(i)}>
+                <span className="row-dot" style={{ background: "var(--primary)" }} />
+                <span className="row-t" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.name}</span>
+                <span className="row-meta"><span className="chip chip-due over">{dateLong(i.date)}</span></span>
+              </div>
+            ))}
+          </div>
+          <div className="panel">
+            <div className="h-title" style={{ fontSize: 16, marginBottom: 8 }}>Jump to</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button className="btn" onClick={() => ctx.setView("calendar")} style={{ justifyContent: "flex-start" }}><CalendarDays size={15} />Calendar</button>
+              <button className="btn" onClick={() => ctx.setView("tracker")} style={{ justifyContent: "flex-start" }}><Table size={15} />Tracker</button>
+              <button className="btn" onClick={() => ctx.setView("gantt")} style={{ justifyContent: "flex-start" }}><GanttChartSquare size={15} />Forecast Gantt</button>
+              <button className="btn" onClick={() => ctx.setView("projections")} style={{ justifyContent: "flex-start" }}><TrendingUp size={15} />Projections</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function HomeView({ ctx }) {
   const { user, setView, gotoGantt } = ctx;
   const gd = ctx.gantt;
