@@ -1049,6 +1049,18 @@ function ForecastView({ ctx }) {
           ))}
           {list.length === 0 && <div style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</div>}
         </div>
+        {/* Totals footer — the "calculator": live monthly + period totals for the current filter. */}
+        <div style={{ display: "flex", alignItems: "stretch", borderTop: "2px solid var(--line)", background: "var(--panel2)" }}>
+          <div style={{ width: NW, minWidth: NW, padding: "10px 12px" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800 }}>Monthly totals</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>Period total {fmt(grand)}</div>
+          </div>
+          <div style={cellGrid}>
+            {FORECAST_MONTHS.map((m, i) => (
+              <div key={m} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
+            ))}
+          </div>
+        </div>
       </div>
     </>
   );
