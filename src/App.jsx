@@ -348,6 +348,7 @@ const NAV = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "tracker", label: "Tracker", Icon: Table },
   { id: "gantt", label: "Gantt", Icon: GanttChartSquare },
+  { id: "projections", label: "Projections", Icon: TrendingUp },
   { id: "alerts", label: "Inbox", Icon: Bell },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
   // { id: "team", label: "Team", Icon: Users }, // Team tab hidden — re-enable this line (and the route below) to bring it back.
@@ -563,6 +564,7 @@ export default function App() {
         {view === "home" && <HomeView ctx={ctx} />}
         {view === "tracker" && <TrackerView ctx={ctx} />}
         {view === "gantt" && <ForecastView ctx={ctx} />}
+        {view === "projections" && <ProjectionsView ctx={ctx} />}
         {view === "alerts" && <NotificationsView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
         {/* {view === "team" && <TeamView ctx={ctx} />} */}{/* Team tab hidden — re-enable with the NAV entry above. */}
@@ -1066,6 +1068,90 @@ function ForecastView({ ctx }) {
               <div key={m} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
             ))}
           </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------- Projections (financial table: comp / backlog / backlog-less-ETC + monthly) ---------------- */
+function ProjectionsView({ ctx }) {
+  const [pm, setPm] = useState("all");
+  const [studio, setStudio] = useState("all");
+  const [q, setQ] = useState("");
+  const pms = [...new Set(FORECAST_PROJECTS.map(p => p.pm).filter(Boolean))].sort();
+  const studios = [...new Set(FORECAST_PROJECTS.map(p => p.studio).filter(Boolean))].sort();
+  const fmt = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n || 0)).toLocaleString();
+  const list = FORECAST_PROJECTS.filter(p => {
+    if (pm !== "all" && p.pm !== pm) return false;
+    if (studio !== "all" && p.studio !== studio) return false;
+    if (q && !((p.name + " " + p.number).toLowerCase().includes(q.toLowerCase()))) return false;
+    return true;
+  }).map(p => ({ ...p, total: p.months.reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total);
+  const sum = (f) => list.reduce((s, p) => s + f(p), 0);
+  const tComp = sum(p => p.comp), tBack = sum(p => p.backlog), tBlEtc = sum(p => p.blEtc), tTotal = sum(p => p.total);
+  const tMonths = FORECAST_MONTHS.map((_, i) => sum(p => p.months[i]));
+  const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
+  const numTd = { padding: "5px 10px", textAlign: "right", fontSize: 12, whiteSpace: "nowrap", borderLeft: "1px solid var(--line)", borderBottom: "1px solid var(--line)" };
+  const nameTd = { padding: "5px 12px", borderBottom: "1px solid var(--line)", minWidth: 240 };
+  const numTh = { padding: "7px 10px", textAlign: "right", fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 2, background: "var(--panel2)", borderLeft: "1px solid var(--line)", borderBottom: "1px solid var(--line)" };
+  const nameTh = { padding: "7px 12px", textAlign: "left", fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 2, background: "var(--panel2)", borderBottom: "1px solid var(--line)" };
+  const footNum = { padding: "8px 10px", textAlign: "right", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap", position: "sticky", bottom: 0, zIndex: 2, background: "var(--panel2)", borderLeft: "1px solid var(--line)", borderTop: "2px solid var(--line)" };
+  const footName = { padding: "8px 12px", fontSize: 12.5, fontWeight: 800, whiteSpace: "nowrap", position: "sticky", bottom: 0, zIndex: 2, background: "var(--panel2)", borderTop: "2px solid var(--line)" };
+  return (
+    <>
+      <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div><div className="h-title">Projections</div><div className="h-sub">Compensation, backlog & expected revenue by project · {FORECAST_RANGE}.</div></div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Expected revenue · {list.length} project{list.length === 1 ? "" : "s"}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "var(--teal)" }}>{fmt(tTotal)}</div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
+        <select value={pm} onChange={e => setPm(e.target.value)} style={selStyle}><option value="all">All PMs</option>{pms.map(p => <option key={p} value={p}>{p}</option>)}</select>
+        <select value={studio} onChange={e => setStudio(e.target.value)} style={selStyle}><option value="all">All studios</option>{studios.map(s => <option key={s} value={s}>{s}</option>)}</select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search project or number…" style={{ ...selStyle, minWidth: 220 }} />
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ overflow: "auto", maxHeight: "74vh" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040, background: "var(--panel)" }}>
+            <thead>
+              <tr>
+                <th style={nameTh}>Project</th>
+                <th style={numTh}>Compensation</th>
+                <th style={numTh}>Backlog</th>
+                <th style={numTh}>Backlog less ETC</th>
+                {FORECAST_MONTHS.map(m => <th key={m} style={numTh}>{m}</th>)}
+                <th style={{ ...numTh, color: "var(--teal)" }}>Expected total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(p => (
+                <tr key={p.number + "|" + p.pm}>
+                  <td style={nameTd}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 360 }} title={p.name}>{p.name}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+                  </td>
+                  <td style={numTd}>{fmt(p.comp)}</td>
+                  <td style={numTd}>{fmt(p.backlog)}</td>
+                  <td style={numTd}>{fmt(p.blEtc)}</td>
+                  {p.months.map((v, i) => <td key={i} style={{ ...numTd, color: v ? "var(--ink)" : "var(--dim)" }}>{fmt(v)}</td>)}
+                  <td style={{ ...numTd, fontWeight: 700, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</td>
+                </tr>
+              ))}
+              {list.length === 0 && <tr><td colSpan={4 + FORECAST_MONTHS.length + 1} style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</td></tr>}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={footName}>Totals · {list.length} projects</td>
+                <td style={footNum}>{fmt(tComp)}</td>
+                <td style={footNum}>{fmt(tBack)}</td>
+                <td style={footNum}>{fmt(tBlEtc)}</td>
+                {tMonths.map((v, i) => <td key={i} style={footNum}>{fmt(v)}</td>)}
+                <td style={{ ...footNum, color: "var(--teal)" }}>{fmt(tTotal)}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     </>
