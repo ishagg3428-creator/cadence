@@ -638,8 +638,9 @@ function HomeDashboard({ ctx }) {
   const curMonthIdx = FORECAST_MONTHS.findIndex(m => m.startsWith(nowMon));
   const topRev = FORECAST_PROJECTS.map(p => ({ ...p, total: p.months.reduce((a, b) => a + b, 0) })).filter(p => p.total > 0).sort((a, b) => b.total - a.total).slice(0, 8);
 
+  const projCount = (() => { const set = new Set(); (tsheets || []).forEach(s => (s.rows || []).forEach(r => { const nm = r.projectName || r.name; if (nm) set.add(nm); })); return set.size; })();
+
   const open = (i) => { if (i.rowId) ctx.gotoTrackerRow(i.sheet, i.rowId); else ctx.setView("calendar"); };
-  const openProj = (p) => { const t = trackerByNum[p.number]; if (t) ctx.gotoTrackerRow(t.sheet, t.rowId); else ctx.setView("projections"); };
   const rel = (iso) => { const diff = Math.round((dT(iso) - todayT) / 86400000); if (diff === 0) return "Today"; if (diff === 1) return "Tomorrow"; if (diff > 1 && diff < 14) return "In " + diff + " days"; if (diff < 0) return (-diff) + "d ago"; return new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
   const dateLong = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
@@ -647,7 +648,7 @@ function HomeDashboard({ ctx }) {
     { label: "Upcoming (" + win + "d)", val: upcoming.length, color: "var(--teal)", I: CalendarDays, go: () => ctx.setView("calendar") },
     { label: "Due this week", val: dueWeek, color: "var(--amber)", I: Clock, go: () => ctx.setView("calendar") },
     { label: "Recently overdue", val: recentOverdue.length, color: "var(--primary)", I: Flame, go: () => ctx.setView("calendar") },
-    { label: "Forecast (6 mo)", val: fmt$(fcTotal), color: "var(--slate)", I: TrendingUp, go: () => ctx.setView("projections") },
+    { label: "Tracked projects", val: projCount, color: "var(--slate)", I: Table, go: () => ctx.setView("tracker") },
   ];
 
   return (
@@ -666,23 +667,6 @@ function HomeDashboard({ ctx }) {
           </div>
         ))}
       </div>
-      <div className="panel" style={{ marginBottom: 14 }} onClick={() => ctx.setView("projections")} title="Open Projections">
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-          <div className="h-title" style={{ fontSize: 16 }}>Revenue by month</div>
-          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{FORECAST_RANGE} · forecast</div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${FORECAST_MONTHS.length},minmax(0,1fr))`, gap: 8, alignItems: "end", cursor: "pointer" }}>
-          {FORECAST_MONTHS.map((m, i) => (
-            <div key={m} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: i === curMonthIdx ? "var(--teal)" : "var(--ink)" }}>{fmt$(monthTot[i])}</div>
-              <div style={{ height: 70, display: "flex", alignItems: "flex-end", justifyContent: "center", margin: "4px 0" }}>
-                <div style={{ width: "62%", height: `${Math.max(4, (monthTot[i] / maxM) * 70)}px`, background: i === curMonthIdx ? "var(--teal)" : "var(--primary)", borderRadius: "5px 5px 0 0", opacity: i === curMonthIdx ? 1 : 0.6 }} />
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 600, color: i === curMonthIdx ? "var(--teal)" : "var(--muted)" }}>{m}</div>
-            </div>
-          ))}
-        </div>
-      </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14, alignItems: "start" }}>
         <div className="panel">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
@@ -692,7 +676,7 @@ function HomeDashboard({ ctx }) {
           {upcoming.length === 0 && <div style={{ color: "var(--muted)", fontSize: 13, padding: "10px 2px" }}>Nothing due in the next {win} days.</div>}
           {upcoming.length > 0 && (
             <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 4 }}>
-              <b style={{ color: "var(--ink)" }}>{thisWeek.length}</b> due this week{weekRev ? <> · tied to <b style={{ color: "var(--teal)" }}>{fmt$(weekRev)}</b> expected revenue</> : null}
+              <b style={{ color: "var(--ink)" }}>{thisWeek.length}</b> due this week · <b style={{ color: "var(--ink)" }}>{upcoming.length}</b> in the next {win} days
             </div>
           )}
           {grouped.map(g => (
@@ -706,7 +690,6 @@ function HomeDashboard({ ctx }) {
                   <span className="row-meta">
                     {i.stage ? <span className="chip">{i.stage}</span> : null}
                     <span className="chip" style={{ color: i.color }}>{i.kind}</span>
-                    {i.rev ? <span className="chip" style={{ color: "var(--teal)", fontWeight: 700 }} title="Expected revenue (6-mo forecast)">{fmt$(i.rev)}</span> : null}
                   </span>
                 </div>
               ))}
