@@ -990,7 +990,14 @@ function ForecastView({ ctx }) {
     let first = -1, last = -1;
     p.months.forEach((m, i) => { if (m !== 0) { if (first < 0) first = i; last = i; } });
     return { ...p, total, first, last };
-  }).sort((a, b) => b.total - a.total);
+  }).sort((a, b) => {
+    // Traditional Gantt order: earliest finish at the top; projects with no forecast sink to the bottom.
+    const ea = a.last < 0 ? 99 : a.last, eb = b.last < 0 ? 99 : b.last;
+    if (ea !== eb) return ea - eb;
+    const sa = a.first < 0 ? 99 : a.first, sb = b.first < 0 ? 99 : b.first;
+    if (sa !== sb) return sa - sb;
+    return b.total - a.total;
+  });
   const colTotals = FORECAST_MONTHS.map((_, i) => list.reduce((s, p) => s + p.months[i], 0));
   const grand = colTotals.reduce((a, b) => a + b, 0);
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
@@ -1027,22 +1034,21 @@ function ForecastView({ ctx }) {
         <div style={{ maxHeight: "66vh", overflow: "auto" }}>
           {list.map(p => (
             <div key={p.number + "|" + p.pm} style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--line)" }}>
-              <div style={{ width: NW, minWidth: NW, padding: "6px 12px", overflow: "hidden" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>{p.name}</div>
-                <div style={{ fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+              <div style={{ width: NW, minWidth: NW, padding: "6px 12px", overflow: "hidden", display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>{p.name}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }} title="Expected revenue this period">
+                  <div style={{ fontSize: 12.5, fontWeight: 800, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</div>
+                  <div style={{ fontSize: 9, color: "var(--muted)", letterSpacing: ".3px" }}>EXPECTED</div>
+                </div>
               </div>
               <div style={{ ...cellGrid, position: "relative", height: 40 }}>
                 {FORECAST_MONTHS.map((m, i) => <div key={i} title={`${m}: ${fmt(p.months[i])}`} style={{ borderLeft: "1px solid var(--line)" }} />)}
                 {p.first >= 0 && (
                   <div title={p.months.map((v, i) => `${FORECAST_MONTHS[i]}: ${fmt(v)}`).join("\n")}
-                    style={{ position: "absolute", top: 9, height: 22, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700, overflow: "hidden", whiteSpace: "nowrap", padding: "0 6px" }}>
-                    {fmt(p.total)}
-                  </div>
-                )}
-                {p.first < 0 && (
-                  <div style={{ position: "absolute", top: 0, left: 0, height: "100%", display: "flex", alignItems: "center", paddingLeft: 8, fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap" }}>
-                    {p.backlog ? "Backlog " + fmt(p.backlog) : (p.comp ? "Comp " + fmt(p.comp) : "—")} · no forecast this period
-                  </div>
+                    style={{ position: "absolute", top: 9, height: 22, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", borderRadius: 6 }} />
                 )}
               </div>
             </div>
