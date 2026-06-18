@@ -1109,9 +1109,10 @@ function MemberAv({ m, size = 20 }) {
 
 // Shared, editable forecast (DB doc id=3). Seeds from the spreadsheet snapshot on first use,
 // then every edit saves conflict-safe so the whole team stays in sync.
-const fcKey = (p) => (p.number || "") + "|" + (p.pm || "");
+const fcKey = (p) => p._id;
+const withFcIds = (arr) => (arr || []).map(p => p._id ? p : { ...p, _id: uid() });
 function useForecast() {
-  const [projects, setProjects] = useState(FORECAST_PROJECTS);
+  const [projects, setProjects] = useState(() => withFcIds(FORECAST_PROJECTS));
   const [rev, setRev] = useState(0); // bumps on remote changes so inputs refresh
   const ver = useRef(0);
   const saving = useRef(false);
@@ -1124,10 +1125,15 @@ function useForecast() {
         const d = await forecastLoad();
         if (!on) return;
         if (d && d.projects) {
-          if (d.v !== ver.current) { ver.current = d.v; setProjects(d.projects); if (loaded.current) setRev(n => n + 1); loaded.current = true; }
+          if (d.v !== ver.current) {
+            const projs = withFcIds(d.projects);
+            ver.current = d.v; setProjects(projs);
+            if (loaded.current) setRev(n => n + 1); loaded.current = true;
+            if (d.projects.some(p => !p._id)) { saving.current = true; const res = await forecastSave({ projects: projs }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; } // migrate ids
+          }
         } else {
-          const res = await forecastSave({ projects: FORECAST_PROJECTS }, 0);
-          if (res && res.v) ver.current = res.v; loaded.current = true;
+          const seeded = withFcIds(FORECAST_PROJECTS);
+          const res = await forecastSave({ projects: seeded }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
         }
       } catch (e) {}
     };
@@ -1135,22 +1141,26 @@ function useForecast() {
     const t = setInterval(pull, 4000);
     return () => { on = false; clearInterval(t); };
   }, []);
-  // Apply a transform to one project (by key) and save, re-applying onto the latest copy on conflict.
-  const update = async (key, fn) => {
-    const next = projects.map(p => fcKey(p) === key ? fn(p) : p);
+  // Save a new project list, re-applying the same change onto the latest copy if a teammate saved meanwhile.
+  const commit = (next, reapply) => {
     setProjects(next);
     saving.current = true;
     let toSave = next, baseV = ver.current;
-    try {
-      for (let i = 0; i < 5; i++) {
-        const res = await forecastSave({ projects: toSave }, baseV);
-        if (res && res.conflict) { const server = (res.doc && res.doc.projects) || []; toSave = server.map(p => fcKey(p) === key ? fn(p) : p); setProjects(toSave); baseV = res.v; continue; }
-        if (res && res.ok) { ver.current = res.v; break; }
-        break;
-      }
-    } catch (e) {} finally { saving.current = false; }
+    (async () => {
+      try {
+        for (let i = 0; i < 5; i++) {
+          const res = await forecastSave({ projects: toSave }, baseV);
+          if (res && res.conflict) { const server = withFcIds((res.doc && res.doc.projects) || []); toSave = reapply(server); setProjects(toSave); baseV = res.v; continue; }
+          if (res && res.ok) { ver.current = res.v; break; }
+          break;
+        }
+      } catch (e) {} finally { saving.current = false; }
+    })();
   };
-  return { projects, rev, update };
+  const update = (id, fn) => commit(projects.map(p => p._id === id ? fn(p) : p), (server) => server.map(p => p._id === id ? fn(p) : p));
+  const addProject = (tmpl) => { const np = { _id: uid(), studio: "", pm: "", number: "", name: "New project", comp: 0, backlog: 0, blEtc: 0, months: [0, 0, 0, 0, 0, 0], ...(tmpl || {}) }; commit([np, ...projects], (server) => [np, ...server]); return np._id; };
+  const removeProject = (id) => commit(projects.filter(p => p._id !== id), (server) => server.filter(p => p._id !== id));
+  return { projects, rev, update, addProject, removeProject };
 }
 // Parse a typed currency/number string into a number (strips $ and commas).
 const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n); };
@@ -1163,10 +1173,19 @@ function FcNumInput({ value, onCommit, align }) {
     onFocus={e => { e.currentTarget.style.background = "var(--raise)"; e.currentTarget.style.boxShadow = "inset 0 0 0 2px var(--teal)"; }}
     onBlurCapture={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }} />;
 }
+// Editable text cell for the forecast (project name / number / PM / studio).
+function FcTextInput({ value, onCommit, placeholder, bold }) {
+  return <input className="fc-edit" defaultValue={value || ""} placeholder={placeholder || ""}
+    onBlur={e => { const v = e.target.value; if (v !== (value || "")) onCommit(v); }}
+    onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+    style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", color: "var(--ink)", fontFamily: "Outfit", fontSize: bold ? 12.5 : 10.5, fontWeight: bold ? 600 : 400, outline: "none", padding: "2px 4px", borderRadius: 4 }}
+    onFocus={e => { e.currentTarget.style.background = "var(--raise)"; e.currentTarget.style.boxShadow = "inset 0 0 0 2px var(--teal)"; }}
+    onBlurCapture={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }} />;
+}
 
 /* ---------------- Forecast Gantt (editable revenue bars + financial columns across months) ---------------- */
 function ForecastView({ ctx }) {
-  const { projects: FP, rev, update } = useForecast();
+  const { projects: FP, rev, update, addProject, removeProject } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
@@ -1198,8 +1217,8 @@ function ForecastView({ ctx }) {
   const grand = colTotals.reduce((a, b) => a + b, 0);
   const tComp = list.reduce((s, p) => s + (p.comp || 0), 0), tBack = list.reduce((s, p) => s + (p.backlog || 0), 0), tBlEtc = list.reduce((s, p) => s + (p.blEtc || 0), 0);
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
-  const NCW = 84;            // width of each financial column
-  const LW = 168 + NCW * 4;  // name + comp + backlog + lessETC + expected
+  const NCW = 84; const DELW = 26;        // financial column width + delete-button slot
+  const LW = 168 + NCW * 4 + DELW;        // name + comp + backlog + lessETC + expected + delete
   const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))`, minWidth: 360 };
   const colLbl = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 10.5, fontWeight: 700, letterSpacing: ".3px" };
   const colNum = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 11.5, fontWeight: 800 };
@@ -1220,6 +1239,7 @@ function ForecastView({ ctx }) {
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />Show $0 projects
         </label>
         <div style={{ flex: 1 }} />
+        <button className="btn btn-sm" onClick={() => addProject({ pm: pm !== "all" ? pm : "", studio: studio !== "all" ? studio : "" })} title="Add a new forecast project"><Plus size={14} />Project</button>
         <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Open the projections table"><TrendingUp size={14} />Projections</button>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
@@ -1227,7 +1247,7 @@ function ForecastView({ ctx }) {
           <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", background: "var(--panel2)", position: "sticky", top: 0, zIndex: 3 }}>
             <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "8px 0 8px 12px", color: "var(--muted)" }}>
               <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700 }}>PROJECT</div>
-              <div style={colLbl}>COMP</div><div style={colLbl}>BACKLOG</div><div style={colLbl}>LESS ETC</div><div style={{ ...colLbl, color: "var(--teal)" }}>EXPECTED</div>
+              <div style={colLbl}>COMP</div><div style={colLbl}>BACKLOG</div><div style={colLbl}>LESS ETC</div><div style={{ ...colLbl, color: "var(--teal)" }}>EXPECTED</div><div style={{ width: DELW }} />
             </div>
             <div style={cellGrid}>
               {FORECAST_MONTHS.map((m, i) => (
@@ -1241,13 +1261,14 @@ function ForecastView({ ctx }) {
             <div key={fcKey(p)} style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--line)" }}>
               <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "4px 0 4px 12px" }}>
                 <div style={{ flex: 1, minWidth: 0, paddingRight: 6 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>{p.name}</div>
-                  <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+                  <FcTextInput key={fcKey(p) + "name-" + rev} value={p.name} bold onCommit={v => update(fcKey(p), x => ({ ...x, name: v }))} />
+                  <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingLeft: 4 }}>{p.number || "—"} · {p.pm || "—"}{p.studio ? " · " + p.studio : ""}</div>
                 </div>
                 <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "c-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></div>
                 <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "b-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></div>
                 <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "e-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></div>
                 <div style={{ width: NCW, textAlign: "right", paddingRight: 8, fontSize: 12, fontWeight: 800, color: p.total ? "var(--teal)" : "var(--muted)" }} title="Expected revenue (sum of months)">{fmt(p.total)}</div>
+                <button title="Delete project" onClick={() => { if (window.confirm("Delete this forecast project?")) removeProject(fcKey(p)); }} style={{ width: DELW, border: "none", background: "transparent", cursor: "pointer", color: "#c0392b", display: "grid", placeItems: "center" }}><Trash2 size={13} /></button>
               </div>
               <div style={{ ...cellGrid, position: "relative", height: 42 }}>
                 {p.first >= 0 && <div style={{ position: "absolute", top: 8, height: 26, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", opacity: 0.16, borderRadius: 6, pointerEvents: "none" }} />}
@@ -1264,7 +1285,7 @@ function ForecastView({ ctx }) {
           <div style={{ display: "flex", alignItems: "stretch", borderTop: "2px solid var(--line)", background: "var(--panel2)", position: "sticky", bottom: 0, zIndex: 3 }}>
             <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "8px 0 8px 12px" }}>
               <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800 }}>Totals · {list.length}</div>
-              <div style={colNum}>{fmt(tComp)}</div><div style={colNum}>{fmt(tBack)}</div><div style={colNum}>{fmt(tBlEtc)}</div><div style={{ ...colNum, color: "var(--teal)" }}>{fmt(grand)}</div>
+              <div style={colNum}>{fmt(tComp)}</div><div style={colNum}>{fmt(tBack)}</div><div style={colNum}>{fmt(tBlEtc)}</div><div style={{ ...colNum, color: "var(--teal)" }}>{fmt(grand)}</div><div style={{ width: DELW }} />
             </div>
             <div style={cellGrid}>
               {FORECAST_MONTHS.map((m, i) => (
@@ -1280,7 +1301,7 @@ function ForecastView({ ctx }) {
 
 /* ---------------- Projections (financial table: comp / backlog / backlog-less-ETC + monthly) ---------------- */
 function ProjectionsView({ ctx }) {
-  const { projects: FP, rev, update } = useForecast();
+  const { projects: FP, rev, update, addProject, removeProject } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
@@ -1319,6 +1340,8 @@ function ProjectionsView({ ctx }) {
         <select value={pm} onChange={e => setPm(e.target.value)} style={selStyle}><option value="all">All PMs</option>{pms.map(p => <option key={p} value={p}>{p}</option>)}</select>
         <select value={studio} onChange={e => setStudio(e.target.value)} style={selStyle}><option value="all">All studios</option>{studios.map(s => <option key={s} value={s}>{s}</option>)}</select>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search project or number…" style={{ ...selStyle, minWidth: 220 }} />
+        <div style={{ flex: 1 }} />
+        <button className="btn btn-sm" onClick={() => addProject({ pm: pm !== "all" ? pm : "", studio: studio !== "all" ? studio : "" })} title="Add a new forecast project"><Plus size={14} />Add project</button>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ overflow: "auto", maxHeight: "74vh" }}>
@@ -1331,23 +1354,29 @@ function ProjectionsView({ ctx }) {
                 <th style={numTh}>Backlog less ETC</th>
                 {FORECAST_MONTHS.map(m => <th key={m} style={numTh}>{m}</th>)}
                 <th style={{ ...numTh, color: "var(--teal)" }}>Expected total</th>
+                <th style={{ ...numTh, width: 36 }}></th>
               </tr>
             </thead>
             <tbody>
               {list.map(p => (
-                <tr key={p.number + "|" + p.pm}>
-                  <td style={nameTd}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 360 }} title={p.name}>{p.name}</div>
-                    <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+                <tr key={fcKey(p)}>
+                  <td style={{ ...nameTd, padding: "2px 8px" }}>
+                    <FcTextInput key={fcKey(p) + "nm-" + rev} value={p.name} bold onCommit={v => update(fcKey(p), x => ({ ...x, name: v }))} />
+                    <div style={{ display: "flex", gap: 2 }}>
+                      <FcTextInput key={fcKey(p) + "num-" + rev} value={p.number} placeholder="number" onCommit={v => update(fcKey(p), x => ({ ...x, number: v }))} />
+                      <FcTextInput key={fcKey(p) + "pm-" + rev} value={p.pm} placeholder="PM" onCommit={v => update(fcKey(p), x => ({ ...x, pm: v }))} />
+                      <FcTextInput key={fcKey(p) + "st-" + rev} value={p.studio} placeholder="studio" onCommit={v => update(fcKey(p), x => ({ ...x, studio: v }))} />
+                    </div>
                   </td>
                   <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "comp-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></td>
                   <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "back-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></td>
                   <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "ble-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></td>
                   {p.months.map((v, i) => <td key={i} style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "m" + i + "-" + rev} value={v} onCommit={nv => update(fcKey(p), x => ({ ...x, months: x.months.map((mm, ii) => ii === i ? nv : mm) }))} /></td>)}
                   <td style={{ ...numTd, fontWeight: 700, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</td>
+                  <td style={{ ...numTd, textAlign: "center", padding: "2px" }}><button title="Delete project" onClick={() => { if (window.confirm("Delete this forecast project?")) removeProject(fcKey(p)); }} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#c0392b", display: "grid", placeItems: "center", width: "100%" }}><Trash2 size={13} /></button></td>
                 </tr>
               ))}
-              {list.length === 0 && <tr><td colSpan={4 + FORECAST_MONTHS.length + 1} style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</td></tr>}
+              {list.length === 0 && <tr><td colSpan={4 + FORECAST_MONTHS.length + 2} style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</td></tr>}
             </tbody>
             <tfoot>
               <tr>
@@ -1357,6 +1386,7 @@ function ProjectionsView({ ctx }) {
                 <td style={footNum}>{fmt(tBlEtc)}</td>
                 {tMonths.map((v, i) => <td key={i} style={footNum}>{fmt(v)}</td>)}
                 <td style={{ ...footNum, color: "var(--teal)" }}>{fmt(tTotal)}</td>
+                <td style={footNum}></td>
               </tr>
             </tfoot>
           </table>
