@@ -10,7 +10,7 @@ import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -1107,17 +1107,75 @@ function MemberAv({ m, size = 20 }) {
   );
 }
 
-/* ---------------- Forecast Gantt (projects as revenue bars across months) ---------------- */
+// Shared, editable forecast (DB doc id=3). Seeds from the spreadsheet snapshot on first use,
+// then every edit saves conflict-safe so the whole team stays in sync.
+const fcKey = (p) => (p.number || "") + "|" + (p.pm || "");
+function useForecast() {
+  const [projects, setProjects] = useState(FORECAST_PROJECTS);
+  const [rev, setRev] = useState(0); // bumps on remote changes so inputs refresh
+  const ver = useRef(0);
+  const saving = useRef(false);
+  const loaded = useRef(false);
+  useEffect(() => {
+    let on = true;
+    const pull = async () => {
+      if (saving.current || (typeof document !== "undefined" && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("fc-edit"))) return; // don't yank focus mid-edit
+      try {
+        const d = await forecastLoad();
+        if (!on) return;
+        if (d && d.projects) {
+          if (d.v !== ver.current) { ver.current = d.v; setProjects(d.projects); if (loaded.current) setRev(n => n + 1); loaded.current = true; }
+        } else {
+          const res = await forecastSave({ projects: FORECAST_PROJECTS }, 0);
+          if (res && res.v) ver.current = res.v; loaded.current = true;
+        }
+      } catch (e) {}
+    };
+    pull();
+    const t = setInterval(pull, 4000);
+    return () => { on = false; clearInterval(t); };
+  }, []);
+  // Apply a transform to one project (by key) and save, re-applying onto the latest copy on conflict.
+  const update = async (key, fn) => {
+    const next = projects.map(p => fcKey(p) === key ? fn(p) : p);
+    setProjects(next);
+    saving.current = true;
+    let toSave = next, baseV = ver.current;
+    try {
+      for (let i = 0; i < 5; i++) {
+        const res = await forecastSave({ projects: toSave }, baseV);
+        if (res && res.conflict) { const server = (res.doc && res.doc.projects) || []; toSave = server.map(p => fcKey(p) === key ? fn(p) : p); setProjects(toSave); baseV = res.v; continue; }
+        if (res && res.ok) { ver.current = res.v; break; }
+        break;
+      }
+    } catch (e) {} finally { saving.current = false; }
+  };
+  return { projects, rev, update };
+}
+// Parse a typed currency/number string into a number (strips $ and commas).
+const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n); };
+// Editable number cell for the forecast (commits on blur / Enter). Class "fc-edit" lets sync pause while focused.
+function FcNumInput({ value, onCommit, align }) {
+  return <input className="fc-edit" defaultValue={value === 0 ? "" : value}
+    onBlur={e => { const nv = parseNum(e.target.value); if (nv !== value) onCommit(nv); }}
+    onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+    style={{ width: "100%", boxSizing: "border-box", textAlign: align || "right", border: "none", background: "transparent", color: value ? "var(--ink)" : "var(--dim)", fontFamily: "Outfit", fontSize: 12, outline: "none", padding: "3px 4px", borderRadius: 4 }}
+    onFocus={e => { e.currentTarget.style.background = "var(--raise)"; e.currentTarget.style.boxShadow = "inset 0 0 0 2px var(--teal)"; }}
+    onBlurCapture={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }} />;
+}
+
+/* ---------------- Forecast Gantt (editable revenue bars + financial columns across months) ---------------- */
 function ForecastView({ ctx }) {
+  const { projects: FP, rev, update } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
   const [showAll, setShowAll] = useState(true);
-  const pms = [...new Set(FORECAST_PROJECTS.map(p => p.pm).filter(Boolean))].sort();
-  const studios = [...new Set(FORECAST_PROJECTS.map(p => p.studio).filter(Boolean))].sort();
-  const fmt = (n) => "$" + Math.round(n || 0).toLocaleString();
+  const pms = [...new Set(FP.map(p => p.pm).filter(Boolean))].sort();
+  const studios = [...new Set(FP.map(p => p.studio).filter(Boolean))].sort();
+  const fmt = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n || 0)).toLocaleString();
   const M = FORECAST_MONTHS.length;
-  const list = FORECAST_PROJECTS.filter(p => {
+  const list = FP.filter(p => {
     if (pm !== "all" && p.pm !== pm) return false;
     if (studio !== "all" && p.studio !== studio) return false;
     if (q && !((p.name + " " + p.number).toLowerCase().includes(q.toLowerCase()))) return false;
@@ -1130,7 +1188,6 @@ function ForecastView({ ctx }) {
     p.months.forEach((m, i) => { if (m !== 0) { if (first < 0) first = i; last = i; } });
     return { ...p, total, first, last };
   }).sort((a, b) => {
-    // Traditional Gantt order: earliest finish at the top; projects with no forecast sink to the bottom.
     const ea = a.last < 0 ? 99 : a.last, eb = b.last < 0 ? 99 : b.last;
     if (ea !== eb) return ea - eb;
     const sa = a.first < 0 ? 99 : a.first, sb = b.first < 0 ? 99 : b.first;
@@ -1139,22 +1196,26 @@ function ForecastView({ ctx }) {
   });
   const colTotals = FORECAST_MONTHS.map((_, i) => list.reduce((s, p) => s + p.months[i], 0));
   const grand = colTotals.reduce((a, b) => a + b, 0);
+  const tComp = list.reduce((s, p) => s + (p.comp || 0), 0), tBack = list.reduce((s, p) => s + (p.backlog || 0), 0), tBlEtc = list.reduce((s, p) => s + (p.blEtc || 0), 0);
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
-  const NW = 300;
-  const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))` };
+  const NCW = 84;            // width of each financial column
+  const LW = 168 + NCW * 4;  // name + comp + backlog + lessETC + expected
+  const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))`, minWidth: 360 };
+  const colLbl = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 10.5, fontWeight: 700, letterSpacing: ".3px" };
+  const colNum = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 11.5, fontWeight: 800 };
   return (
     <>
       <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div><div className="h-title">Forecast</div><div className="h-sub">Projected revenue by project across {FORECAST_RANGE}. Bars span each project's active months.</div></div>
+        <div><div className="h-title">Forecast</div><div className="h-sub">Editable revenue forecast · {FORECAST_RANGE}. Type in any cell — changes sync to the team.</div></div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Total forecast · {list.length} project{list.length === 1 ? "" : "s"}</div>
+          <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Total expected · {list.length} project{list.length === 1 ? "" : "s"}</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "var(--teal)" }}>{fmt(grand)}</div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
         <select value={pm} onChange={e => setPm(e.target.value)} style={selStyle}><option value="all">All PMs</option>{pms.map(p => <option key={p} value={p}>{p}</option>)}</select>
         <select value={studio} onChange={e => setStudio(e.target.value)} style={selStyle}><option value="all">All studios</option>{studios.map(s => <option key={s} value={s}>{s}</option>)}</select>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search project or number…" style={{ ...selStyle, minWidth: 220 }} />
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search project or number…" style={{ ...selStyle, minWidth: 200 }} />
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--muted)", cursor: "pointer" }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />Show $0 projects
         </label>
@@ -1162,50 +1223,54 @@ function ForecastView({ ctx }) {
         <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Open the projections table"><TrendingUp size={14} />Projections</button>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", background: "var(--panel2)", position: "sticky", top: 0, zIndex: 2 }}>
-          <div style={{ width: NW, minWidth: NW, padding: "8px 12px", fontWeight: 700, fontSize: 12 }}>Project</div>
-          <div style={cellGrid}>
-            {FORECAST_MONTHS.map((m, i) => (
-              <div key={m} style={{ padding: "6px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 700, borderLeft: "1px solid var(--line)" }}>
-                {m}<div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
-              </div>
-            ))}
+        <div style={{ maxHeight: "72vh", overflow: "auto" }}>
+          <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", background: "var(--panel2)", position: "sticky", top: 0, zIndex: 3 }}>
+            <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "8px 0 8px 12px", color: "var(--muted)" }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700 }}>PROJECT</div>
+              <div style={colLbl}>COMP</div><div style={colLbl}>BACKLOG</div><div style={colLbl}>LESS ETC</div><div style={{ ...colLbl, color: "var(--teal)" }}>EXPECTED</div>
+            </div>
+            <div style={cellGrid}>
+              {FORECAST_MONTHS.map((m, i) => (
+                <div key={m} style={{ padding: "6px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 700, borderLeft: "1px solid var(--line)" }}>
+                  {m}<div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-        <div style={{ maxHeight: "66vh", overflow: "auto" }}>
           {list.map(p => (
-            <div key={p.number + "|" + p.pm} style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--line)" }}>
-              <div style={{ width: NW, minWidth: NW, padding: "6px 12px", overflow: "hidden", display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
+            <div key={fcKey(p)} style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "4px 0 4px 12px" }}>
+                <div style={{ flex: 1, minWidth: 0, paddingRight: 6 }}>
                   <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>{p.name}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }} title="Expected revenue this period">
-                  <div style={{ fontSize: 12.5, fontWeight: 800, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</div>
-                  <div style={{ fontSize: 9, color: "var(--muted)", letterSpacing: ".3px" }}>EXPECTED</div>
-                </div>
+                <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "c-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></div>
+                <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "b-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></div>
+                <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "e-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></div>
+                <div style={{ width: NCW, textAlign: "right", paddingRight: 8, fontSize: 12, fontWeight: 800, color: p.total ? "var(--teal)" : "var(--muted)" }} title="Expected revenue (sum of months)">{fmt(p.total)}</div>
               </div>
-              <div style={{ ...cellGrid, position: "relative", height: 40 }}>
-                {FORECAST_MONTHS.map((m, i) => <div key={i} title={`${m}: ${fmt(p.months[i])}`} style={{ borderLeft: "1px solid var(--line)" }} />)}
-                {p.first >= 0 && (
-                  <div title={p.months.map((v, i) => `${FORECAST_MONTHS[i]}: ${fmt(v)}`).join("\n")}
-                    style={{ position: "absolute", top: 9, height: 22, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", borderRadius: 6 }} />
-                )}
+              <div style={{ ...cellGrid, position: "relative", height: 42 }}>
+                {p.first >= 0 && <div style={{ position: "absolute", top: 8, height: 26, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", opacity: 0.16, borderRadius: 6, pointerEvents: "none" }} />}
+                {p.months.map((v, i) => (
+                  <div key={i} style={{ borderLeft: "1px solid var(--line)", position: "relative", display: "flex", alignItems: "center" }}>
+                    <FcNumInput key={fcKey(p) + "gm" + i + "-" + rev} value={v} onCommit={nv => update(fcKey(p), x => ({ ...x, months: x.months.map((mm, ii) => ii === i ? nv : mm) }))} align="center" />
+                  </div>
+                ))}
               </div>
             </div>
           ))}
           {list.length === 0 && <div style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</div>}
-        </div>
-        {/* Totals footer — the "calculator": live monthly + period totals for the current filter. */}
-        <div style={{ display: "flex", alignItems: "stretch", borderTop: "2px solid var(--line)", background: "var(--panel2)" }}>
-          <div style={{ width: NW, minWidth: NW, padding: "10px 12px" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 800 }}>Monthly totals</div>
-            <div style={{ fontSize: 11, color: "var(--muted)" }}>Period total {fmt(grand)}</div>
-          </div>
-          <div style={cellGrid}>
-            {FORECAST_MONTHS.map((m, i) => (
-              <div key={m} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12.5, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
-            ))}
+          {/* Totals footer — live monthly + financial totals for the current filter. */}
+          <div style={{ display: "flex", alignItems: "stretch", borderTop: "2px solid var(--line)", background: "var(--panel2)", position: "sticky", bottom: 0, zIndex: 3 }}>
+            <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "8px 0 8px 12px" }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800 }}>Totals · {list.length}</div>
+              <div style={colNum}>{fmt(tComp)}</div><div style={colNum}>{fmt(tBack)}</div><div style={colNum}>{fmt(tBlEtc)}</div><div style={{ ...colNum, color: "var(--teal)" }}>{fmt(grand)}</div>
+            </div>
+            <div style={cellGrid}>
+              {FORECAST_MONTHS.map((m, i) => (
+                <div key={m} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1215,13 +1280,14 @@ function ForecastView({ ctx }) {
 
 /* ---------------- Projections (financial table: comp / backlog / backlog-less-ETC + monthly) ---------------- */
 function ProjectionsView({ ctx }) {
+  const { projects: FP, rev, update } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
-  const pms = [...new Set(FORECAST_PROJECTS.map(p => p.pm).filter(Boolean))].sort();
-  const studios = [...new Set(FORECAST_PROJECTS.map(p => p.studio).filter(Boolean))].sort();
+  const pms = [...new Set(FP.map(p => p.pm).filter(Boolean))].sort();
+  const studios = [...new Set(FP.map(p => p.studio).filter(Boolean))].sort();
   const fmt = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n || 0)).toLocaleString();
-  const list = FORECAST_PROJECTS.filter(p => {
+  const list = FP.filter(p => {
     if (pm !== "all" && p.pm !== pm) return false;
     if (studio !== "all" && p.studio !== studio) return false;
     if (q && !((p.name + " " + p.number).toLowerCase().includes(q.toLowerCase()))) return false;
@@ -1274,10 +1340,10 @@ function ProjectionsView({ ctx }) {
                     <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 360 }} title={p.name}>{p.name}</div>
                     <div style={{ fontSize: 10.5, color: "var(--muted)" }}>{p.number} · {p.pm}{p.studio ? " · " + p.studio : ""}</div>
                   </td>
-                  <td style={numTd}>{fmt(p.comp)}</td>
-                  <td style={numTd}>{fmt(p.backlog)}</td>
-                  <td style={numTd}>{fmt(p.blEtc)}</td>
-                  {p.months.map((v, i) => <td key={i} style={{ ...numTd, color: v ? "var(--ink)" : "var(--dim)" }}>{fmt(v)}</td>)}
+                  <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "comp-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></td>
+                  <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "back-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></td>
+                  <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "ble-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></td>
+                  {p.months.map((v, i) => <td key={i} style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "m" + i + "-" + rev} value={v} onCommit={nv => update(fcKey(p), x => ({ ...x, months: x.months.map((mm, ii) => ii === i ? nv : mm) }))} /></td>)}
                   <td style={{ ...numTd, fontWeight: 700, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</td>
                 </tr>
               ))}
