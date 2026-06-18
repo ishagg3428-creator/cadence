@@ -10,7 +10,7 @@ import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
-import { apiLoad, apiSave, calLoad, calSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -422,13 +422,13 @@ export default function App() {
     const d = loadData();
     if (d && (d.people || d.tasks)) setData({ people: d.people || [], projects: d.projects || [], tasks: d.tasks || [] });
     else setData(SEED_DATA);
-    const u = loadUser(); if (u) setUser(u);
+    const u = loadUser(); if (u && hasKey()) setUser(u); else if (u) saveUser(null); // need a valid login key, else show sign-in
     setLoaded(true);
   }, []);
   useEffect(() => { if (loaded) saveData(data); }, [data, loaded]);
 
   const signIn = (u) => { setUser(u); saveUser(u); setView("home"); };
-  const signOut = () => { setUser(null); saveUser(null); setMenuOpen(false); };
+  const signOut = () => { apiLogout(); setUser(null); saveUser(null); setMenuOpen(false); };
 
   const personById = (id) => data.people.find(p => p.id === id);
   const projectById = (id) => data.projects.find(p => p.id === id);
@@ -1158,6 +1158,8 @@ function ForecastView({ ctx }) {
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--muted)", cursor: "pointer" }}>
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />Show $0 projects
         </label>
+        <div style={{ flex: 1 }} />
+        <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Open the projections table"><TrendingUp size={14} />Projections</button>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", background: "var(--panel2)", position: "sticky", top: 0, zIndex: 2 }}>
@@ -1239,7 +1241,7 @@ function ProjectionsView({ ctx }) {
     <>
       <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
-          <button className="btn btn-ghost btn-sm" onClick={() => ctx.setView("tracker")} style={{ marginBottom: 6 }}><ChevronLeft size={14} />Back to Tracker</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => ctx.setView("gantt")} style={{ marginBottom: 6 }}><ChevronLeft size={14} />Back to Gantt</button>
           <div className="h-title">Projections</div><div className="h-sub">Compensation, backlog & expected revenue by project · {FORECAST_RANGE}.</div>
         </div>
         <div style={{ textAlign: "right" }}>
@@ -3323,7 +3325,6 @@ function TrackerView({ ctx }) {
           </div>
           <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {data.length} projects</span>
           <div style={{ flex: 1 }} />
-          <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Revenue projections for these projects"><TrendingUp size={14} />Projections</button>
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
           {undoStack.length > 0 && (
@@ -3769,35 +3770,36 @@ function MicrosoftLogo() {
   return (<span className="ms-logo"><span style={{ background: "#F25022" }} /><span style={{ background: "#7FBA00" }} /><span style={{ background: "#00A4EF" }} /><span style={{ background: "#FFB900" }} /></span>);
 }
 function LoginScreen({ onSignIn }) {
-  const [step, setStep] = useState("start");
-  const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
-  const [remember, setRemember] = useState(true);
-  const finish = () => {
-    const display = name.trim() || (email.split("@")[0] || "You").replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-    onSignIn({ name: display, email: email.trim() || "you@rtmec.com" });
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    if (!username.trim() || !password) { setErr("Enter your username and password."); return; }
+    setBusy(true); setErr("");
+    const res = await apiLogin(username.trim(), password);
+    setBusy(false);
+    if (res.ok) {
+      const display = username.trim().replace(/[._]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      onSignIn({ name: display, email: username.includes("@") ? username.trim() : username.trim() + "@rtmec.com" });
+    } else {
+      setErr(res.error === "network" ? "Couldn't reach the server — try again." : "Incorrect username or password.");
+    }
   };
   return (
     <div className="login">
       <div className="login-card">
-        <span className="demo-tag"><ShieldCheck size={13} />Preview sign-in</span>
+        <span className="demo-tag"><ShieldCheck size={13} />Secure sign-in</span>
         <div className="login-mark"><LayoutGrid size={26} /></div>
         <h1>Cadence</h1>
-        <p>Sign in with your rtmec Microsoft account to continue.</p>
-        {step === "start" ? (
-          <>
-            <button className="ms-btn" onClick={() => setStep("account")}><MicrosoftLogo /> Sign in with Microsoft</button>
-            <div className="login-foot"><ShieldCheck size={13} /> Only @rtmec.com accounts — no separate password.</div>
-          </>
-        ) : (
-          <div style={{ textAlign: "left" }}>
-            <div className="fld"><label>Work email</label><input autoFocus type="email" placeholder="you@rtmec.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && finish()} /></div>
-            <div className="fld"><label>Your name</label><input placeholder="First Last" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === "Enter" && finish()} /></div>
-            <div className="rem" onClick={() => setRemember(r => !r)}><span className={`rb ${remember ? "on" : ""}`}>{remember && <Check size={12} />}</span>Remember me on this device</div>
-            <button className="btn btn-pri" style={{ width: "100%", justifyContent: "center" }} onClick={finish}><Check size={16} /> Continue</button>
-            <div className="login-foot" style={{ marginTop: 14 }}>In the live version this is the real Microsoft login — it fills in automatically.</div>
-          </div>
-        )}
+        <p>Sign in to access the studio tracker.</p>
+        <div style={{ textAlign: "left" }}>
+          <div className="fld"><label>Username</label><input autoFocus placeholder="username" value={username} onChange={e => setUsername(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} /></div>
+          <div className="fld"><label>Password</label><input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()} /></div>
+          {err && <div style={{ color: "#ff8a8c", fontSize: 12.5, marginBottom: 10 }}>{err}</div>}
+          <button className="btn btn-pri" style={{ width: "100%", justifyContent: "center" }} disabled={busy} onClick={submit}><Check size={16} />{busy ? "Signing in…" : "Sign in"}</button>
+          <div className="login-foot" style={{ marginTop: 14 }}><ShieldCheck size={13} /> Shared beta access — credentials from Ishaan.</div>
+        </div>
       </div>
     </div>
   );
