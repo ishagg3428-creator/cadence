@@ -1113,6 +1113,7 @@ const fcKey = (p) => p._id;
 const withFcIds = (arr) => (arr || []).map(p => p._id ? p : { ...p, _id: uid() });
 function useForecast() {
   const [projects, setProjects] = useState(() => withFcIds(FORECAST_PROJECTS));
+  const [months, setMonths] = useState(FORECAST_MONTHS); // editable column labels (shared)
   const [rev, setRev] = useState(0); // bumps on remote changes so inputs refresh
   const ver = useRef(0);
   const saving = useRef(false);
@@ -1127,13 +1128,13 @@ function useForecast() {
         if (d && d.projects) {
           if (d.v !== ver.current) {
             const projs = withFcIds(d.projects);
-            ver.current = d.v; setProjects(projs);
+            ver.current = d.v; setProjects(projs); if (d.months && d.months.length) setMonths(d.months);
             if (loaded.current) setRev(n => n + 1); loaded.current = true;
-            if (d.projects.some(p => !p._id)) { saving.current = true; const res = await forecastSave({ projects: projs }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; } // migrate ids
+            if (d.projects.some(p => !p._id)) { saving.current = true; const res = await forecastSave({ projects: projs, months: d.months || FORECAST_MONTHS }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; } // migrate ids
           }
         } else {
           const seeded = withFcIds(FORECAST_PROJECTS);
-          const res = await forecastSave({ projects: seeded }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
+          const res = await forecastSave({ projects: seeded, months: FORECAST_MONTHS }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
         }
       } catch (e) {}
     };
@@ -1141,26 +1142,27 @@ function useForecast() {
     const t = setInterval(pull, 4000);
     return () => { on = false; clearInterval(t); };
   }, []);
-  // Save a new project list, re-applying the same change onto the latest copy if a teammate saved meanwhile.
-  const commit = (next, reapply) => {
-    setProjects(next);
+  // Save the doc {projects, months}, re-applying the same change onto the latest copy on conflict.
+  const commit = (nextProjects, nextMonths, reapply) => {
+    setProjects(nextProjects); setMonths(nextMonths);
     saving.current = true;
-    let toSave = next, baseV = ver.current;
+    let sp = nextProjects, sm = nextMonths, baseV = ver.current;
     (async () => {
       try {
         for (let i = 0; i < 5; i++) {
-          const res = await forecastSave({ projects: toSave }, baseV);
-          if (res && res.conflict) { const server = withFcIds((res.doc && res.doc.projects) || []); toSave = reapply(server); setProjects(toSave); baseV = res.v; continue; }
+          const res = await forecastSave({ projects: sp, months: sm }, baseV);
+          if (res && res.conflict) { const server = res.doc || {}; const m = reapply({ projects: withFcIds(server.projects || []), months: (server.months && server.months.length) ? server.months : sm }); sp = m.projects; sm = m.months; setProjects(sp); setMonths(sm); baseV = res.v; continue; }
           if (res && res.ok) { ver.current = res.v; break; }
           break;
         }
       } catch (e) {} finally { saving.current = false; }
     })();
   };
-  const update = (id, fn) => commit(projects.map(p => p._id === id ? fn(p) : p), (server) => server.map(p => p._id === id ? fn(p) : p));
-  const addProject = (tmpl) => { const np = { _id: uid(), studio: "", pm: "", number: "", name: "New project", comp: 0, backlog: 0, blEtc: 0, months: [0, 0, 0, 0, 0, 0], ...(tmpl || {}) }; commit([np, ...projects], (server) => [np, ...server]); return np._id; };
-  const removeProject = (id) => commit(projects.filter(p => p._id !== id), (server) => server.filter(p => p._id !== id));
-  return { projects, rev, update, addProject, removeProject };
+  const update = (id, fn) => commit(projects.map(p => p._id === id ? fn(p) : p), months, (doc) => ({ projects: doc.projects.map(p => p._id === id ? fn(p) : p), months: doc.months }));
+  const addProject = (tmpl) => { const np = { _id: uid(), studio: "", pm: "", number: "", name: "New project", comp: 0, backlog: 0, blEtc: 0, months: [0, 0, 0, 0, 0, 0], ...(tmpl || {}) }; commit([np, ...projects], months, (doc) => ({ projects: [np, ...doc.projects], months: doc.months })); return np._id; };
+  const removeProject = (id) => commit(projects.filter(p => p._id !== id), months, (doc) => ({ projects: doc.projects.filter(p => p._id !== id), months: doc.months }));
+  const setMonthLabel = (idx, label) => commit(projects, months.map((m, i) => i === idx ? label : m), (doc) => ({ projects: doc.projects, months: doc.months.map((m, i) => i === idx ? label : m) }));
+  return { projects, months, rev, update, addProject, removeProject, setMonthLabel };
 }
 // Parse a typed currency/number string into a number (strips $ and commas).
 const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n); };
@@ -1173,19 +1175,19 @@ function FcNumInput({ value, onCommit, align }) {
     onFocus={e => { e.currentTarget.style.background = "var(--raise)"; e.currentTarget.style.boxShadow = "inset 0 0 0 2px var(--teal)"; }}
     onBlurCapture={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }} />;
 }
-// Editable text cell for the forecast (project name / number / PM / studio).
-function FcTextInput({ value, onCommit, placeholder, bold }) {
+// Editable text cell for the forecast (project name / number / PM / studio / month label).
+function FcTextInput({ value, onCommit, placeholder, bold, style }) {
   return <input className="fc-edit" defaultValue={value || ""} placeholder={placeholder || ""}
     onBlur={e => { const v = e.target.value; if (v !== (value || "")) onCommit(v); }}
     onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
-    style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", color: "var(--ink)", fontFamily: "Outfit", fontSize: bold ? 12.5 : 10.5, fontWeight: bold ? 600 : 400, outline: "none", padding: "2px 4px", borderRadius: 4 }}
+    style={{ width: "100%", boxSizing: "border-box", border: "none", background: "transparent", color: "var(--ink)", fontFamily: "Outfit", fontSize: bold ? 12.5 : 10.5, fontWeight: bold ? 600 : 400, outline: "none", padding: "2px 4px", borderRadius: 4, ...(style || {}) }}
     onFocus={e => { e.currentTarget.style.background = "var(--raise)"; e.currentTarget.style.boxShadow = "inset 0 0 0 2px var(--teal)"; }}
     onBlurCapture={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.boxShadow = "none"; }} />;
 }
 
 /* ---------------- Forecast Gantt (editable revenue bars + financial columns across months) ---------------- */
 function ForecastView({ ctx }) {
-  const { projects: FP, rev, update, addProject, removeProject } = useForecast();
+  const { projects: FP, rev, update, addProject, removeProject, months: MONTHS, setMonthLabel } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
@@ -1193,7 +1195,7 @@ function ForecastView({ ctx }) {
   const pms = [...new Set(FP.map(p => p.pm).filter(Boolean))].sort();
   const studios = [...new Set(FP.map(p => p.studio).filter(Boolean))].sort();
   const fmt = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n || 0)).toLocaleString();
-  const M = FORECAST_MONTHS.length;
+  const M = MONTHS.length;
   const list = FP.filter(p => {
     if (pm !== "all" && p.pm !== pm) return false;
     if (studio !== "all" && p.studio !== studio) return false;
@@ -1213,7 +1215,7 @@ function ForecastView({ ctx }) {
     if (sa !== sb) return sa - sb;
     return b.total - a.total;
   });
-  const colTotals = FORECAST_MONTHS.map((_, i) => list.reduce((s, p) => s + p.months[i], 0));
+  const colTotals = MONTHS.map((_, i) => list.reduce((s, p) => s + (p.months[i] || 0), 0));
   const grand = colTotals.reduce((a, b) => a + b, 0);
   const tComp = list.reduce((s, p) => s + (p.comp || 0), 0), tBack = list.reduce((s, p) => s + (p.backlog || 0), 0), tBlEtc = list.reduce((s, p) => s + (p.blEtc || 0), 0);
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
@@ -1250,9 +1252,10 @@ function ForecastView({ ctx }) {
               <div style={colLbl}>COMP</div><div style={colLbl}>BACKLOG</div><div style={colLbl}>LESS ETC</div><div style={{ ...colLbl, color: "var(--teal)" }}>EXPECTED</div><div style={{ width: DELW }} />
             </div>
             <div style={cellGrid}>
-              {FORECAST_MONTHS.map((m, i) => (
-                <div key={m} style={{ padding: "6px 6px", textAlign: "center", fontSize: 11.5, fontWeight: 700, borderLeft: "1px solid var(--line)" }}>
-                  {m}<div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
+              {MONTHS.map((m, i) => (
+                <div key={i} style={{ padding: "4px 4px", textAlign: "center", borderLeft: "1px solid var(--line)" }}>
+                  <FcTextInput key={"hm" + i + "-" + rev} value={m} bold style={{ textAlign: "center" }} onCommit={v => setMonthLabel(i, v)} />
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
                 </div>
               ))}
             </div>
@@ -1288,8 +1291,8 @@ function ForecastView({ ctx }) {
               <div style={colNum}>{fmt(tComp)}</div><div style={colNum}>{fmt(tBack)}</div><div style={colNum}>{fmt(tBlEtc)}</div><div style={{ ...colNum, color: "var(--teal)" }}>{fmt(grand)}</div><div style={{ width: DELW }} />
             </div>
             <div style={cellGrid}>
-              {FORECAST_MONTHS.map((m, i) => (
-                <div key={m} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
+              {MONTHS.map((m, i) => (
+                <div key={i} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
               ))}
             </div>
           </div>
@@ -1301,7 +1304,7 @@ function ForecastView({ ctx }) {
 
 /* ---------------- Projections (financial table: comp / backlog / backlog-less-ETC + monthly) ---------------- */
 function ProjectionsView({ ctx }) {
-  const { projects: FP, rev, update, addProject, removeProject } = useForecast();
+  const { projects: FP, rev, update, addProject, removeProject, months: MONTHS, setMonthLabel } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
@@ -1316,7 +1319,7 @@ function ProjectionsView({ ctx }) {
   }).map(p => ({ ...p, total: p.months.reduce((a, b) => a + b, 0) })).sort((a, b) => b.total - a.total);
   const sum = (f) => list.reduce((s, p) => s + f(p), 0);
   const tComp = sum(p => p.comp), tBack = sum(p => p.backlog), tBlEtc = sum(p => p.blEtc), tTotal = sum(p => p.total);
-  const tMonths = FORECAST_MONTHS.map((_, i) => sum(p => p.months[i]));
+  const tMonths = MONTHS.map((_, i) => sum(p => p.months[i] || 0));
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
   const numTd = { padding: "5px 10px", textAlign: "right", fontSize: 12, whiteSpace: "nowrap", borderLeft: "1px solid var(--line)", borderBottom: "1px solid var(--line)" };
   const nameTd = { padding: "5px 12px", borderBottom: "1px solid var(--line)", minWidth: 240 };
@@ -1352,7 +1355,7 @@ function ProjectionsView({ ctx }) {
                 <th style={numTh}>Compensation</th>
                 <th style={numTh}>Backlog</th>
                 <th style={numTh}>Backlog less ETC</th>
-                {FORECAST_MONTHS.map(m => <th key={m} style={numTh}>{m}</th>)}
+                {MONTHS.map((m, i) => <th key={i} style={{ ...numTh, padding: "2px 4px" }}><FcTextInput key={"phm" + i + "-" + rev} value={m} bold style={{ textAlign: "right" }} onCommit={v => setMonthLabel(i, v)} /></th>)}
                 <th style={{ ...numTh, color: "var(--teal)" }}>Expected total</th>
                 <th style={{ ...numTh, width: 36 }}></th>
               </tr>
@@ -1376,7 +1379,7 @@ function ProjectionsView({ ctx }) {
                   <td style={{ ...numTd, textAlign: "center", padding: "2px" }}><button title="Delete project" onClick={() => { if (window.confirm("Delete this forecast project?")) removeProject(fcKey(p)); }} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#c0392b", display: "grid", placeItems: "center", width: "100%" }}><Trash2 size={13} /></button></td>
                 </tr>
               ))}
-              {list.length === 0 && <tr><td colSpan={4 + FORECAST_MONTHS.length + 2} style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</td></tr>}
+              {list.length === 0 && <tr><td colSpan={4 + MONTHS.length + 2} style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</td></tr>}
             </tbody>
             <tfoot>
               <tr>
