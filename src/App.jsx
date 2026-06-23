@@ -429,6 +429,33 @@ export default function App() {
 
   const signIn = (u) => { setUser(u); saveUser(u); setView("home"); };
   const signOut = () => { apiLogout(); setUser(null); saveUser(null); setMenuOpen(false); };
+  const backupFileRef = useRef(null);
+  // Download a single JSON snapshot of all shared data (tracker + calendar + forecast).
+  const downloadBackup = async () => {
+    setMenuOpen(false);
+    let t = null, c = null, f = null;
+    try { t = await apiLoad(); } catch (e) {}
+    try { c = await calLoad(); } catch (e) {}
+    try { f = await forecastLoad(); } catch (e) {}
+    const data = { app: "cadence", version: 1, exportedAt: new Date().toISOString(), tracker: t, calendar: c, forecast: f };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "cadence-backup-" + new Date().toISOString().slice(0, 10) + ".json"; document.body.appendChild(a); a.click(); a.remove();
+  };
+  // Restore everyone's data from a previously downloaded backup file (overwrites current).
+  const restoreBackup = async (file) => {
+    if (!file) return;
+    setMenuOpen(false);
+    let data; try { data = JSON.parse(await file.text()); } catch (e) { alert("That file isn't a valid Cadence backup."); return; }
+    if (!data || (!data.tracker && !data.calendar && !data.forecast)) { alert("That file doesn't look like a Cadence backup."); return; }
+    if (!window.confirm("Restore will OVERWRITE the current tracker, calendar, and forecast for everyone with this backup. This can't be undone. Continue?")) return;
+    try {
+      if (data.tracker && data.tracker.sheets) await apiSave({ sheets: data.tracker.sheets });
+      if (data.calendar && data.calendar.events) await calSave({ events: data.calendar.events });
+      if (data.forecast && data.forecast.projects) await forecastSave({ projects: data.forecast.projects, months: data.forecast.months });
+      alert("Restore complete — reloading.");
+      location.reload();
+    } catch (e) { alert("Restore failed: " + (e && e.message ? e.message : e)); }
+  };
 
   const personById = (id) => data.people.find(p => p.id === id);
   const projectById = (id) => data.projects.find(p => p.id === id);
@@ -539,6 +566,11 @@ export default function App() {
               <button className={`menu-i ${presence === "auto" ? "on" : ""}`} onClick={() => { updateUser({ presence: "auto" }); setMenuOpen(false); }}><Monitor size={17} />Auto — online while you're here</button>
               <button className={`menu-i ${presence === "online" ? "on" : ""}`} onClick={() => { updateUser({ presence: "online" }); setMenuOpen(false); }}><span style={{ width: 17, display: "grid", placeItems: "center" }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "#33B36B" }} /></span>Online</button>
               <button className={`menu-i ${presence === "offline" ? "on" : ""}`} onClick={() => { updateUser({ presence: "offline" }); setMenuOpen(false); }}><span style={{ width: 17, display: "grid", placeItems: "center" }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "#E03A3E" }} /></span>Offline</button>
+              <div className="menu-sep" />
+              <div className="menu-lbl">Data</div>
+              <button className="menu-i" onClick={downloadBackup}><Download size={17} />Download backup</button>
+              <button className="menu-i" onClick={() => backupFileRef.current && backupFileRef.current.click()}><Upload size={17} />Restore from backup…</button>
+              <input ref={backupFileRef} type="file" accept="application/json,.json" style={{ display: "none" }} onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; restoreBackup(f); }} />
               <div className="menu-sep" />
               <button className="menu-i" onClick={signOut}><LogOut size={17} />Sign out</button>
             </div>
@@ -3313,18 +3345,6 @@ function TrackerView({ ctx }) {
     u.set("subject", `[${row.projectName}] `);
     window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
   };
-  // Flag rows whose due date or bid/permit date is overdue ("over") or within ~7 days ("soon").
-  const rowRisk = (r) => {
-    const t = new Date(); t.setHours(0, 0, 0, 0);
-    const now = t.getTime(), soonMax = now + 7 * 86400000;
-    let over = false, soon = false;
-    ["dueDates", "bidPermitDate"].forEach(k => {
-      const iso = parseTrackerDate(r[k]); if (!iso) return;
-      const d = new Date(iso + "T00:00:00").getTime();
-      if (d < now) over = true; else if (d <= soonMax) soon = true;
-    });
-    return over ? "over" : (soon ? "soon" : null);
-  };
   const GUT = 46;
   const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
@@ -3485,17 +3505,15 @@ function TrackerView({ ctx }) {
             <tbody>
               {rows.map((r, ri) => {
                 const em = rowEmails(r);
-                const risk = rowRisk(r);
-                const tint = selRow === r._id ? "rgba(79,168,232,0.13)" : (risk === "over" ? "rgba(224,58,62,0.13)" : risk === "soon" ? "rgba(232,165,60,0.15)" : null);
-                const gutTint = selRow === r._id ? "rgba(79,168,232,0.18)" : (risk === "over" ? "rgba(224,58,62,0.2)" : risk === "soon" ? "rgba(232,165,60,0.22)" : "var(--panel2)");
+                const tint = selRow === r._id ? "rgba(79,168,232,0.13)" : null;
+                const gutTint = selRow === r._id ? "rgba(79,168,232,0.18)" : "var(--panel2)";
                 return (
                 <tr key={r._id || ri}
                   onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
-                    onClick={() => setSelRow(id => id === r._id ? null : r._id)}
-                    title={risk === "over" ? "A due / bid-permit date is overdue" : risk === "soon" ? "A due / bid-permit date is within 7 days" : "Click to highlight this row · drag to reorder"}
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title="Click to highlight this row · drag to reorder"
                     style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
