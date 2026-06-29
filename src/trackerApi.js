@@ -30,6 +30,13 @@ export async function apiLoad() {
   if (!r.ok) throw new Error("api load failed");
   return r.json();
 }
+// Tiny poll: returns only the doc version (a few bytes), so we fetch the full doc only when it changed.
+export async function apiVersion(id) {
+  const r = await fetch("/api/tracker?meta=1" + (id ? "&id=" + id : ""), { cache: "no-store", headers: authHeaders() });
+  if (!r.ok) throw new Error("version check failed");
+  const j = await r.json();
+  return j && typeof j.v === "number" ? j.v : 0;
+}
 export async function apiSave(doc, baseV) {
   const headers = authHeaders({ "Content-Type": "application/json" });
   if (baseV != null) headers["x-base-v"] = String(baseV);

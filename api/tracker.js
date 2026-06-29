@@ -27,6 +27,12 @@ export default async function handler(req, res) {
     const docId = Number(req.query && req.query.id) || 1;
 
     if (req.method === "GET") {
+      // Lightweight version check (?meta=1): returns ONLY the version, not the whole doc.
+      // Clients poll this cheaply and fetch the full doc only when the version changed — keeps data transfer tiny.
+      if (req.query && req.query.meta) {
+        const vr = await sql`select v from tracker_doc where id = ${docId}`;
+        return res.status(200).json({ v: vr.length ? Number(vr[0].v) : 0 });
+      }
       const rows = await sql`select doc, v from tracker_doc where id = ${docId}`;
       if (!rows.length) return res.status(200).json(null);
       return res.status(200).json({ ...rows[0].doc, v: Number(rows[0].v) });

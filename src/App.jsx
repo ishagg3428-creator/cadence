@@ -10,7 +10,7 @@ import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -1155,6 +1155,8 @@ function useForecast() {
     const pull = async () => {
       if (saving.current || (typeof document !== "undefined" && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("fc-edit"))) return; // don't yank focus mid-edit
       try {
+        const v = await apiVersion(3);
+        if (loaded.current && v === ver.current) return; // unchanged — skip the full download
         const d = await forecastLoad();
         if (!on) return;
         if (d && d.projects) {
@@ -3186,9 +3188,8 @@ function TrackerView({ ctx }) {
     let timer, cancelled = false, flashTimer;
     const pull = async () => {
       if (!apiOk.current || document.hidden || editingRef.current || savingRef.current) return; // skip when hidden, editing, or mid-save
-      // Pull whenever the server's version differs from the one we last saw (not just ">"), so a window
-      // can never get stuck showing its own stale copy.
-      try { const doc = await apiLoad(); if (doc && doc.v !== curV.current) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setRemoteRev(n => n + 1); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
+      // Cheap version check first; only download the full (large) doc when it actually changed.
+      try { const v = await apiVersion(); if (v === curV.current) return; const doc = await apiLoad(); if (doc && doc.v !== curV.current) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setRemoteRev(n => n + 1); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
     };
     (async () => {
       try {
@@ -3201,7 +3202,7 @@ function TrackerView({ ctx }) {
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
       if (cancelled) return;
-      timer = setInterval(pull, 600); // poll every 0.6s for near-live updates
+      timer = setInterval(pull, 2000); // poll every 2s (cheap version check; full doc only on change)
     })();
     const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
     window.addEventListener("focus", onFocus);
@@ -3593,7 +3594,8 @@ function CalendarView({ ctx }) {
   const evSaving = useRef(false);
   useEffect(() => {
     let on = true;
-    const pull = async () => { if (evSaving.current) return; try { const d = await calLoad(); if (on && d && d.v !== evV.current) { evV.current = d.v || 0; setEvents(d.events || []); } } catch (e) {} };
+    let loadedEv = false;
+    const pull = async () => { if (evSaving.current) return; try { const v = await apiVersion(2); if (loadedEv && v === evV.current) return; loadedEv = true; const d = await calLoad(); if (on && d && d.v !== evV.current) { evV.current = d.v || 0; setEvents(d.events || []); } } catch (e) {} };
     pull();
     const t = setInterval(pull, 2500);
     return () => { on = false; clearInterval(t); };
