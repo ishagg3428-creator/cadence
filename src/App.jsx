@@ -3488,7 +3488,7 @@ function TrackerView({ ctx }) {
               <tr>
                 <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}></th>
                 {visibleCols.map((c, ci) => (
-                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w, ...(c.sticky ? { left: GUT, zIndex: 5 } : {}) }}>
+                  <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
                       <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
@@ -3518,7 +3518,7 @@ function TrackerView({ ctx }) {
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     return (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(c.sticky ? { position: "sticky", left: GUT, zIndex: 1, background: "var(--panel)" } : {}), ...(tint ? { background: tint } : {}) }}>
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
                       {isRole ? (
                         <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} />
                       ) : c.key === "stage" ? (
