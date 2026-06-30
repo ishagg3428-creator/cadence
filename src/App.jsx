@@ -3333,6 +3333,7 @@ function TrackerView({ ctx }) {
     return () => clearTimeout(t);
   }, [ctx.trackerGoto]);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
+  const MULTILINE = ["dueDates", "bidPermitDate", "statusNotes", "bidPermitNote"]; // cells that render as multi-line text (e.g. one date per line)
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
   const ql = q.trim().toLowerCase();
@@ -3539,6 +3540,8 @@ function TrackerView({ ctx }) {
         </div>
         <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:5px 8px;outline:none;}
 .trk-table input:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
+.trk-table textarea.trk-ml{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:5px 8px;outline:none;resize:vertical;line-height:1.45;min-height:28px;white-space:pre-wrap;overflow-wrap:anywhere;display:block;}
+.trk-table textarea.trk-ml:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
 .trk-gut{cursor:grab;}
 .trk-role{padding:4px 8px;line-height:1.55;cursor:default;min-height:26px;}
@@ -3580,8 +3583,9 @@ function TrackerView({ ctx }) {
                     style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
+                    const isML = MULTILINE.includes(c.key);
                     return (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: isRole ? "top" : "middle", whiteSpace: isRole ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
+                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: (isRole || isML) ? "top" : "middle", whiteSpace: (isRole || isML) ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
                       {isRole ? (
                         <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} />
                       ) : c.key === "stage" ? (
@@ -3591,6 +3595,9 @@ function TrackerView({ ctx }) {
                           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
                           <option value="__new">➕ New status…</option>
                         </select>
+                      ) : isML ? (
+                        <textarea className="trk-ml" key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} rows={1}
+                          onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       ) : (
                         <input key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
                           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = rows.findIndex(x => x._id === r._id); const next = rows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
