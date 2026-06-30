@@ -3590,6 +3590,7 @@ function CalendarView({ ctx }) {
   const [dayOpen, setDayOpen] = useState(null);
   const [dayEdit, setDayEdit] = useState(null); // iso of the day being edited (double-click)
   const [events, setEvents] = useState([]);     // shared custom calendar events (DB doc id=2)
+  const [cats, setCats] = useState({ due: true, bid: true, event: true }); // category filters (like the tracker)
   const evV = useRef(0);
   const evSaving = useRef(false);
   useEffect(() => {
@@ -3631,19 +3632,19 @@ function CalendarView({ ctx }) {
 
   const byDay = {};
   const add = (iso, ev) => { if (!iso) return; (byDay[iso] = byDay[iso] || []).push(ev); };
-  // Project due dates + bid/permit dates from the shared tracker.
+  // Project due dates + bid/permit dates from the shared tracker (each gated by its category filter).
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
     const nm = r.projectName || r.name; if (!nm) return;
-    add(parseTrackerDate(r.dueDates), { type: "due", label: nm, color: "var(--primary)", sheet: s.id, rowId: r._id });
-    add(parseTrackerDate(r.bidPermitDate), { type: "bid/permit", label: nm, color: "var(--teal)", sheet: s.id, rowId: r._id });
+    if (cats.due) add(parseTrackerDate(r.dueDates), { type: "due", label: nm, color: "var(--primary)", sheet: s.id, rowId: r._id });
+    if (cats.bid) add(parseTrackerDate(r.bidPermitDate), { type: "bid/permit", label: nm, color: "var(--teal)", sheet: s.id, rowId: r._id });
   }));
   // Legacy Gantt due dates, if any.
-  (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
+  if (cats.due) (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
     add(p.due, { type: "project", label: p.name, color: "var(--primary)", pid: p.id, done: !!p.done });
     p.groups.forEach(g => add(g.end, { type: "task", label: g.name, color: "var(--teal)", pid: p.id, done: gComplete(g) }));
   });
   // Custom shared events.
-  (events || []).forEach(e => add(e.date, { type: "event", label: e.title || "(untitled)", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId, custom: true, id: e.id }));
+  if (cats.event) (events || []).forEach(e => add(e.date, { type: "event", label: e.title || "(untitled)", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId, custom: true, id: e.id }));
 
   const cells = [];
   for (let i = 0; i < startDow; i++) cells.push(null);
@@ -3655,9 +3656,14 @@ function CalendarView({ ctx }) {
   return (
     <>
       <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Project due dates & bid/permit dates from the tracker. Double-click a day to add, edit, or delete shared events.</div></div>
-        <div style={{ display: "flex", gap: 12, fontSize: 11.5, color: "var(--muted)", alignItems: "center" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--primary)" }} />due date</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 9, height: 9, borderRadius: 99, background: "var(--teal)" }} />bid / permit</span>
+        <div style={{ display: "flex", gap: 8, fontSize: 11.5, color: "var(--muted)", alignItems: "center" }}>
+          <span style={{ fontSize: 11, color: "var(--dim)" }}>Show:</span>
+          {[["due", "var(--primary)", "Due dates"], ["bid", "var(--teal)", "Bid / permit"], ["event", "#9A6BF0", "Events"]].map(([k, col, label]) => (
+            <button key={k} onClick={() => setCats(c => ({ ...c, [k]: !c[k] }))} title={`Toggle ${label}`}
+              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: cats[k] ? "var(--panel2)" : "transparent", color: cats[k] ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: cats[k] ? 1 : 0.55 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 99, background: col }} />{label}
+            </button>
+          ))}
         </div>
       </div>
       <div className="panel">
@@ -3677,8 +3683,9 @@ function CalendarView({ ctx }) {
             const evs = byDay[iso] || [];
             const note = notes[iso];
             return (
-              <div className={`cal-cell ${iso === today ? "today" : ""}`} key={iso} onClick={() => setDayOpen(iso)} onDoubleClick={() => setDayEdit(iso)} title="Double-click to add or edit events" style={{ cursor: "pointer" }}>
+              <div className={`cal-cell ${iso === today ? "today" : ""}`} key={iso} onClick={() => setDayOpen(iso)} onDoubleClick={() => setDayEdit(iso)} title="Click for the day · + to add an event" style={{ cursor: "pointer", position: "relative" }}>
                 <div className="cal-num">{d}</div>
+                <button title="Add an event" onClick={(e) => { e.stopPropagation(); setDayEdit(iso); }} style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: "none", background: "var(--panel2)", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "grid", placeItems: "center", padding: 0 }}>+</button>
                 {evs.slice(0, 3).map((ev, j) => (
                   <div className={`cal-ev ${ev.done ? "done" : ""}`} key={j} style={{ background: ev.color }} title={`${ev.label} — ${ev.type}`}
                     onClick={(e) => { e.stopPropagation(); ev.pid ? gotoGantt(ev.pid) : (ev.rowId ? ctx.gotoTrackerRow(ev.sheet, ev.rowId) : (ev.custom ? setDayEdit(iso) : ctx.setView("tracker"))); }}>{ev.label}</div>
