@@ -171,18 +171,19 @@ const css = `
 .cal-bgcell:hover { background:var(--raise); cursor:pointer; }
 .cal-add { position:absolute; top:5px; right:5px; width:18px; height:18px; border-radius:5px; border:none; background:var(--panel2); color:var(--muted); cursor:pointer; font-size:14px; line-height:1; display:grid; place-items:center; padding:0; opacity:0; transition:.12s; }
 .cal-bgcell:hover .cal-add { opacity:1; }
-.cal-week-fg { position:relative; pointer-events:none; padding-top:6px; min-height:128px; }
-.cal-nums { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:4px; }
-.cal-n { font-size:14px; font-weight:600; color:var(--muted); padding-left:9px; }
+.cal-week-fg { position:relative; pointer-events:none; padding-top:7px; min-height:172px; }
+.cal-nums { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:5px; }
+.cal-n { font-size:15px; font-weight:600; color:var(--muted); padding-left:10px; }
 .cal-n.out { opacity:.5; }
 .cal-n.today { color:var(--primary); font-weight:700; }
-.cal-lanes { display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:23px; row-gap:3px; }
-.cal-bar { pointer-events:auto; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink); border-radius:5px; padding:2px 7px; margin:0 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; min-width:0; height:21px; box-sizing:border-box; }
+.cal-lanes { display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:minmax(23px,auto); row-gap:4px; align-items:start; }
+.cal-bar { pointer-events:auto; display:flex; align-items:flex-start; gap:6px; font-size:12.5px; font-weight:600; color:var(--ink); border-radius:6px; padding:3px 8px; margin:0 2px; white-space:normal; overflow-wrap:anywhere; line-height:1.3; cursor:pointer; min-width:0; min-height:22px; box-sizing:border-box; }
+.cal-bar-text { display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
 .cal-bar.cont-l { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:0; }
 .cal-bar.cont-r { border-top-right-radius:0; border-bottom-right-radius:0; margin-right:0; }
 .cal-bar.done { opacity:.55; text-decoration:line-through; }
-.cal-bar-dot { width:7px; height:7px; border-radius:99px; flex-shrink:0; }
-.cal-more { pointer-events:auto; font-size:11.5px; font-weight:600; color:var(--muted); cursor:pointer; padding-left:9px; }
+.cal-bar-dot { width:7px; height:7px; border-radius:99px; flex-shrink:0; margin-top:4px; }
+.cal-more { pointer-events:auto; font-size:11.5px; font-weight:600; color:var(--muted); cursor:pointer; padding-left:10px; }
 .cal-more:hover { color:var(--primary); }
 
 /* gantt */
@@ -3818,7 +3819,7 @@ function CalendarView({ ctx }) {
   const gridStart = addDaysIso(first, -first.getDay()); // back up to the Sunday on/before the 1st
   const today = todayISO();
   const monthName = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  const LANES = 3; // bars shown per day before an "+N more" row
+  const LANES = 4; // bars shown per day before an "+N more" row
 
   // 6-week grid including adjacent-month days (so multi-day bars flow across month edges, like Planner).
   const weeks = [];
@@ -3933,12 +3934,12 @@ function CalendarView({ ctx }) {
                 </div>
                 <div className="cal-week-fg">
                   <div className="cal-nums">{wk.map((c, ci) => <div key={ci} className={`cal-n${c.inMonth ? "" : " out"}${c.isToday ? " today" : ""}`}>{c.day}</div>)}</div>
-                  <div className="cal-lanes" style={{ minHeight: LANES * 26 }}>
+                  <div className="cal-lanes" style={{ minHeight: LANES * 27 }}>
                     {shown.map(seg => (
                       <div key={seg.key} className={`cal-bar${seg.done ? " done" : ""}${seg.contStart ? " cont-l" : ""}${seg.contEnd ? " cont-r" : ""}`}
                         style={{ gridColumn: `${seg.sc + 1} / ${seg.ec + 2}`, gridRow: seg.lane + 1, background: (typeof seg.color === "string" && seg.color.startsWith("#")) ? seg.color + "26" : "var(--raise)", borderLeft: "3px solid " + seg.color }}
                         title={seg.title} onClick={(e) => { e.stopPropagation(); openItem(seg); }}>
-                        <span className="cal-bar-dot" style={{ background: seg.color }} />{seg.title}
+                        <span className="cal-bar-dot" style={{ background: seg.color }} /><span className="cal-bar-text">{seg.title}</span>
                       </div>
                     ))}
                     {anyMore && moreByCol.map((n, ci) => n > 0 ? (
