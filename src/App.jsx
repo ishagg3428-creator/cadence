@@ -1367,9 +1367,9 @@ function ForecastView({ ctx }) {
               </div>
               <div style={{ ...cellGrid, position: "relative", height: 42 }}>
                 {p.first >= 0 && <div style={{ position: "absolute", top: 8, height: 26, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", opacity: 0.16, borderRadius: 6, pointerEvents: "none" }} />}
-                {p.months.map((v, i) => (
+                {MONTHS.map((mlabel, i) => (
                   <div key={i} style={{ borderLeft: "1px solid var(--line)", position: "relative", display: "flex", alignItems: "center" }}>
-                    <FcNumInput key={fcKey(p) + "gm" + i + "-" + rev} value={v} onCommit={nv => update(fcKey(p), x => ({ ...x, months: x.months.map((mm, ii) => ii === i ? nv : mm) }))} align="center" />
+                    <FcNumInput key={fcKey(p) + "gm" + i + "-" + rev} value={p.months[i] || 0} onCommit={nv => update(fcKey(p), x => ({ ...x, months: MONTHS.map((_, ii) => ii === i ? nv : (x.months[ii] || 0)) }))} align="center" />
                   </div>
                 ))}
               </div>
@@ -1466,7 +1466,7 @@ function ProjectionsView({ ctx }) {
                   <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "comp-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></td>
                   <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "back-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></td>
                   <td style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "ble-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></td>
-                  {p.months.map((v, i) => <td key={i} style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "m" + i + "-" + rev} value={v} onCommit={nv => update(fcKey(p), x => ({ ...x, months: x.months.map((mm, ii) => ii === i ? nv : mm) }))} /></td>)}
+                  {MONTHS.map((mlabel, i) => <td key={i} style={{ ...numTd, padding: "2px 6px" }}><FcNumInput key={fcKey(p) + "m" + i + "-" + rev} value={p.months[i] || 0} onCommit={nv => update(fcKey(p), x => ({ ...x, months: MONTHS.map((_, ii) => ii === i ? nv : (x.months[ii] || 0)) }))} /></td>)}
                   <td style={{ ...numTd, fontWeight: 700, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</td>
                   <td style={{ ...numTd, textAlign: "center", padding: "2px" }}><button title="Delete project" onClick={() => { if (window.confirm("Delete this forecast project?")) removeProject(fcKey(p)); }} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#c0392b", display: "grid", placeItems: "center", width: "100%" }}><Trash2 size={13} /></button></td>
                 </tr>
