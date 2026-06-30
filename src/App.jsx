@@ -1310,7 +1310,8 @@ function ForecastView({ ctx }) {
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
   const NCW = 84; const DELW = 26;        // financial column width + delete-button slot
   const LW = 168 + NCW * 4 + DELW;        // name + comp + backlog + lessETC + expected + delete
-  const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))`, minWidth: Math.max(360, M * 62) };
+  const COLW = 80;
+  const cellGrid = { flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(${M}, ${COLW}px)`, width: M * COLW };
   const colLbl = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 10.5, fontWeight: 700, letterSpacing: ".3px" };
   const colNum = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 11.5, fontWeight: 800 };
   return (
