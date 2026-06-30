@@ -3200,6 +3200,15 @@ const TRACKER_COLS = [
   { key: "stamp", label: "Stamp", w: 110 },
   { key: "stage", label: "Stage", w: 170 },
 ];
+// Multi-line tracker cell that auto-grows to fully show its content (content height = minimum), still resizable taller.
+function MlCell({ value, onSave, idAttr }) {
+  const ref = useRef(null);
+  const fit = () => { const el = ref.current; if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } };
+  useEffect(() => { fit(); }, [value]);
+  return <textarea ref={ref} className="trk-ml" id={idAttr} defaultValue={value || ""} title={value} rows={1}
+    onInput={fit}
+    onBlur={e => { if (e.target.value !== (value ?? "")) onSave(e.target.value); }} />;
+}
 function TrackerView({ ctx }) {
   const { effLight, theme } = ctx;
   // All sheets are held in state together and synced as one document — each sheet
@@ -3596,8 +3605,7 @@ function TrackerView({ ctx }) {
                           <option value="__new">➕ New status…</option>
                         </select>
                       ) : isML ? (
-                        <textarea className="trk-ml" key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} rows={1}
-                          onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
+                        <MlCell key={r._id + "-" + c.key + "-" + remoteRev} value={r[c.key]} onSave={v => update(r._id, c.key, v)} idAttr={"cell-" + r._id + "-" + c.key} />
                       ) : (
                         <input key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
                           onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = rows.findIndex(x => x._id === r._id); const next = rows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
