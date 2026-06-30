@@ -4,7 +4,7 @@ import {
   Plus, CalendarDays, Users, LayoutGrid, Mail, Check, Trash2, Pencil,
   Download, Upload, X, ChevronLeft, ChevronRight, Search, Sparkles,
   CheckCircle2, Circle, Clock, FolderOpen, AlertCircle, LogOut, Send, ShieldCheck,
-  LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table, Copy
+  LayoutDashboard, GanttChartSquare, ChevronDown, ChevronUp, Settings, TrendingUp, Flame, Sun, Moon, Monitor, RefreshCw, Minus, RotateCcw, Bell, MessageSquare, Table, Copy, Filter
 } from "lucide-react";
 import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
@@ -161,7 +161,7 @@ const css = `
 .cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .cal-m { font-family:'Fraunces'; font-size:21px; font-weight:600; }
 .cal-dow-row { display:grid; grid-template-columns:repeat(7,1fr); }
-.cal-dow { text-align:left; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:0 0 6px 8px; }
+.cal-dow { text-align:left; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:0 0 7px 9px; }
 .cal-month { border-top:1px solid var(--line); border-left:1px solid var(--line); border-radius:10px; overflow:hidden; }
 .cal-week { position:relative; }
 .cal-week-bg { position:absolute; inset:0; display:grid; grid-template-columns:repeat(7,1fr); }
@@ -171,18 +171,18 @@ const css = `
 .cal-bgcell:hover { background:var(--raise); cursor:pointer; }
 .cal-add { position:absolute; top:5px; right:5px; width:18px; height:18px; border-radius:5px; border:none; background:var(--panel2); color:var(--muted); cursor:pointer; font-size:14px; line-height:1; display:grid; place-items:center; padding:0; opacity:0; transition:.12s; }
 .cal-bgcell:hover .cal-add { opacity:1; }
-.cal-week-fg { position:relative; pointer-events:none; padding-top:5px; }
-.cal-nums { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:3px; }
-.cal-n { font-size:12.5px; font-weight:600; color:var(--muted); padding-left:8px; }
+.cal-week-fg { position:relative; pointer-events:none; padding-top:6px; min-height:128px; }
+.cal-nums { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:4px; }
+.cal-n { font-size:14px; font-weight:600; color:var(--muted); padding-left:9px; }
 .cal-n.out { opacity:.5; }
 .cal-n.today { color:var(--primary); font-weight:700; }
-.cal-lanes { display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:19px; row-gap:2px; }
-.cal-bar { pointer-events:auto; display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--ink); border-radius:5px; padding:1px 6px; margin:0 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; min-width:0; height:17px; box-sizing:border-box; }
+.cal-lanes { display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:23px; row-gap:3px; }
+.cal-bar { pointer-events:auto; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink); border-radius:5px; padding:2px 7px; margin:0 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; min-width:0; height:21px; box-sizing:border-box; }
 .cal-bar.cont-l { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:0; }
 .cal-bar.cont-r { border-top-right-radius:0; border-bottom-right-radius:0; margin-right:0; }
 .cal-bar.done { opacity:.55; text-decoration:line-through; }
 .cal-bar-dot { width:7px; height:7px; border-radius:99px; flex-shrink:0; }
-.cal-more { pointer-events:auto; font-size:10.5px; font-weight:600; color:var(--muted); cursor:pointer; padding-left:8px; }
+.cal-more { pointer-events:auto; font-size:11.5px; font-weight:600; color:var(--muted); cursor:pointer; padding-left:9px; }
 .cal-more:hover { color:var(--primary); }
 
 /* gantt */
@@ -3751,6 +3751,9 @@ function CalendarView({ ctx }) {
   const [buckets, setBuckets] = useState(SEED_BUCKETS);
   const [cats, setCats] = useState({ due: true, bid: true }); // tracker-derived date filters
   const [hiddenBk, setHiddenBk] = useState({});  // bucket ids (or "none") that are filtered out
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef(null);
+  useEffect(() => { if (!filterOpen) return; const h = (e) => { if (filterRef.current && !filterRef.current.contains(e.target)) setFilterOpen(false); }; document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h); }, [filterOpen]);
   const evV = useRef(0);
   const evSaving = useRef(false);
   // Old events stored a single `date`; normalize every event to a start/end range.
@@ -3860,28 +3863,44 @@ function CalendarView({ ctx }) {
   return (
     <>
       <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Tracker due & bid/permit dates plus shared events. Events can span multiple days and are grouped into buckets you can filter.</div></div>
-        <div style={{ display: "flex", gap: 6, fontSize: 11.5, color: "var(--muted)", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "62%" }}>
-          {[["due", "var(--primary)", "Due dates"], ["bid", "var(--teal)", "Bid / permit"]].map(([k, col, label]) => (
-            <button key={k} onClick={() => setCats(c => ({ ...c, [k]: !c[k] }))} title={`Toggle ${label}`}
-              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: cats[k] ? "var(--panel2)" : "transparent", color: cats[k] ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: cats[k] ? 1 : 0.55 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 99, background: col }} />{label}
-            </button>
-          ))}
-          <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 2px" }} />
-          {buckets.map(b => (
-            <button key={b.id} onClick={() => setHiddenBk(h => ({ ...h, [b.id]: !h[b.id] }))} title={`Toggle ${b.name}`}
-              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: !hiddenBk[b.id] ? "var(--panel2)" : "transparent", color: !hiddenBk[b.id] ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: !hiddenBk[b.id] ? 1 : 0.55 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 99, background: b.color }} />{b.name}
-            </button>
-          ))}
-          {hasUnbucketed && (
-            <button onClick={() => setHiddenBk(h => ({ ...h, none: !h.none }))} title="Toggle events with no bucket"
-              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: !hiddenBk.none ? "var(--panel2)" : "transparent", color: !hiddenBk.none ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: !hiddenBk.none ? 1 : 0.55 }}>
-              <span style={{ width: 9, height: 9, borderRadius: 99, background: "#9A6BF0" }} />Other
-            </button>
-          )}
-          <button className="btn btn-sm" onClick={() => setBkMgr(true)} title="Add, rename, recolor or delete buckets" style={{ gap: 5 }}><Settings size={13} />Buckets</button>
-        </div>
+        {(() => {
+          const trackerEntries = [
+            { id: "due", color: "var(--primary)", label: "Due dates", on: cats.due, toggle: () => setCats(c => ({ ...c, due: !c.due })) },
+            { id: "bid", color: "var(--teal)", label: "Bid / permit", on: cats.bid, toggle: () => setCats(c => ({ ...c, bid: !c.bid })) },
+          ];
+          const bucketEntries = buckets.map(b => ({ id: b.id, color: b.color, label: b.name, on: !hiddenBk[b.id], toggle: () => setHiddenBk(h => ({ ...h, [b.id]: !h[b.id] })) }));
+          if (hasUnbucketed) bucketEntries.push({ id: "none", color: "#9A6BF0", label: "Other (no bucket)", on: !hiddenBk.none, toggle: () => setHiddenBk(h => ({ ...h, none: !h.none })) });
+          const hiddenCount = [...trackerEntries, ...bucketEntries].filter(e => !e.on).length;
+          const fRow = (en) => (
+            <div key={en.id} onClick={en.toggle} style={{ display: "flex", alignItems: "center", gap: 9, padding: "7px 9px", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--raise)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <input type="checkbox" checked={en.on} readOnly style={{ accentColor: "var(--primary)", width: 14, height: 14, pointerEvents: "none", flexShrink: 0 }} />
+              <span style={{ width: 9, height: 9, borderRadius: 99, background: en.color, flexShrink: 0 }} />
+              <span style={{ color: en.on ? "var(--ink)" : "var(--dim)", fontWeight: 500 }}>{en.label}</span>
+            </div>
+          );
+          return (
+            <div ref={filterRef} style={{ position: "relative" }}>
+              <button className="btn btn-sm" onClick={() => setFilterOpen(o => !o)} title="Filter what shows on the calendar" style={{ gap: 6 }}>
+                <Filter size={14} />Filter{hiddenCount > 0 && <span style={{ background: "var(--primary)", color: "#fff", borderRadius: 99, fontSize: 10, fontWeight: 700, padding: "1px 5px" }}>{hiddenCount}</span>}<ChevronDown size={13} style={{ opacity: 0.7 }} />
+              </button>
+              {filterOpen && (
+                <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 50, background: "var(--panel2)", border: "1px solid var(--line2)", borderRadius: 14, padding: "8px 6px", minWidth: 250, maxHeight: 420, overflowY: "auto", boxShadow: "0 16px 40px rgba(0,0,0,.45)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 9px 6px" }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".6px" }}>Tracker dates</span>
+                    {hiddenCount > 0 && <button onClick={() => { setCats({ due: true, bid: true }); setHiddenBk({}); }} style={{ border: "none", background: "transparent", color: "var(--primary)", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>Show all</button>}
+                  </div>
+                  {trackerEntries.map(fRow)}
+                  <div style={{ borderTop: "1px solid var(--line)", margin: "8px 6px" }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".6px", padding: "0 9px 4px" }}>Buckets</div>
+                  {bucketEntries.map(fRow)}
+                  <div style={{ borderTop: "1px solid var(--line)", margin: "8px 6px 6px" }} />
+                  <button className="btn btn-sm" style={{ width: "100%", justifyContent: "center", gap: 6 }} onClick={() => { setBkMgr(true); setFilterOpen(false); }}><Settings size={13} />Manage buckets</button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
       <div className="panel">
         <div className="cal-head">
@@ -3914,7 +3933,7 @@ function CalendarView({ ctx }) {
                 </div>
                 <div className="cal-week-fg">
                   <div className="cal-nums">{wk.map((c, ci) => <div key={ci} className={`cal-n${c.inMonth ? "" : " out"}${c.isToday ? " today" : ""}`}>{c.day}</div>)}</div>
-                  <div className="cal-lanes" style={{ minHeight: LANES * 21 }}>
+                  <div className="cal-lanes" style={{ minHeight: LANES * 26 }}>
                     {shown.map(seg => (
                       <div key={seg.key} className={`cal-bar${seg.done ? " done" : ""}${seg.contStart ? " cont-l" : ""}${seg.contEnd ? " cont-r" : ""}`}
                         style={{ gridColumn: `${seg.sc + 1} / ${seg.ec + 2}`, gridRow: seg.lane + 1, background: (typeof seg.color === "string" && seg.color.startsWith("#")) ? seg.color + "26" : "var(--raise)", borderLeft: "3px solid " + seg.color }}
