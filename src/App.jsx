@@ -10,6 +10,7 @@ import { SEED_DATA, SEED_GANTT } from "./seedData.js";
 import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
+import * as XLSX from "xlsx";
 import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
@@ -1143,9 +1144,48 @@ function MemberAv({ m, size = 20 }) {
 // then every edit saves conflict-safe so the whole team stays in sync.
 const fcKey = (p) => p._id;
 const withFcIds = (arr) => (arr || []).map(p => p._id ? p : { ...p, _id: uid() });
+// Keep every project's monthly array and the label list at the current month count (pads old 6-month data to 12).
+const NMONTHS = FORECAST_MONTHS.length;
+const padMonths = (m) => { const a = Array.isArray(m) ? m.slice(0, NMONTHS) : []; while (a.length < NMONTHS) a.push(0); return a; };
+const padLabels = (l) => { const a = Array.isArray(l) ? l.slice(0, NMONTHS) : []; for (let i = a.length; i < NMONTHS; i++) a.push(FORECAST_MONTHS[i]); return a; };
+const normProjects = (arr) => withFcIds(arr).map(p => ({ ...p, months: padMonths(p.months) }));
+// Parse a Deltek "Project Forecast" .xlsx export into forecast projects, mapping its monthly columns
+// onto the app's month labels by name. Returns [] if it doesn't look like that export.
+async function parseForecastFile(file, monthLabels) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
+  const cl = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+  const mk = (s) => cl(s).replace(/\s+/g, "").toLowerCase();
+  const pm = (s) => s && s.includes(",") ? (s.split(",")[1].trim() + " " + s.split(",")[0].trim()) : (s || "");
+  const num = (v) => { const n = parseFloat(String(v).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n); };
+  let hdr = -1;
+  for (let i = 0; i < rows.length; i++) { if ((rows[i] || []).some(c => cl(c) === "Compensation")) { hdr = i; break; } }
+  const MRE = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*'?\s*\d{2,4}$/i;
+  const monthCols = [];
+  if (hdr >= 0) (rows[hdr] || []).forEach((c, ci) => { if (MRE.test(cl(c))) monthCols.push({ col: ci, label: cl(c) }); });
+  const N = monthLabels.length;
+  let studio = "", mgr = "", projnum = "", longname = "";
+  const projects = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i] || []; const a = cl(r[0]); if (!a) continue;
+    if (a.startsWith("Studio:")) studio = a.slice(7).trim();
+    else if (a.startsWith("Project Manager Name:")) mgr = pm(a.slice(21).trim());
+    else if (a.startsWith("Project Long Name:")) longname = a.slice(18).trim();
+    else if (a.startsWith("Project Number:")) projnum = a.slice(15).trim().split(" ")[0];
+    else if (a.startsWith("Total for ") && projnum && a.slice(10).trim() === projnum) {
+      const months = new Array(N).fill(0);
+      monthCols.forEach(mc => { const ai = monthLabels.findIndex(m => mk(m) === mk(mc.label)); if (ai >= 0) months[ai] = num(r[mc.col]); });
+      projects.push({ _id: uid(), studio, pm: mgr, number: projnum, name: cl(r[2]) || longname, comp: num(r[4]), backlog: num(r[5]), blEtc: num(r[6]), months });
+      projnum = "";
+    }
+  }
+  return projects;
+}
 function useForecast() {
-  const [projects, setProjects] = useState(() => withFcIds(FORECAST_PROJECTS));
-  const [months, setMonths] = useState(FORECAST_MONTHS); // editable column labels (shared)
+  const [projects, setProjects] = useState(() => normProjects(FORECAST_PROJECTS));
+  const [months, setMonths] = useState(padLabels(FORECAST_MONTHS)); // editable column labels (shared)
   const [rev, setRev] = useState(0); // bumps on remote changes so inputs refresh
   const ver = useRef(0);
   const saving = useRef(false);
@@ -1161,14 +1201,17 @@ function useForecast() {
         if (!on) return;
         if (d && d.projects) {
           if (d.v !== ver.current) {
-            const projs = withFcIds(d.projects);
-            ver.current = d.v; setProjects(projs); if (d.months && d.months.length) setMonths(d.months);
+            const projs = normProjects(d.projects);
+            const labs = padLabels(d.months);
+            ver.current = d.v; setProjects(projs); setMonths(labs);
             if (loaded.current) setRev(n => n + 1); loaded.current = true;
-            if (d.projects.some(p => !p._id)) { saving.current = true; const res = await forecastSave({ projects: projs, months: d.months || FORECAST_MONTHS }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; } // migrate ids
+            // Migrate the stored doc if anything needs upgrading (missing ids, or old 6-month shape -> 12).
+            const needsMigrate = d.projects.some(p => !p._id || (p.months || []).length !== NMONTHS) || !(d.months && d.months.length === NMONTHS);
+            if (needsMigrate) { saving.current = true; const res = await forecastSave({ projects: projs, months: labs }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; }
           }
         } else {
-          const seeded = withFcIds(FORECAST_PROJECTS);
-          const res = await forecastSave({ projects: seeded, months: FORECAST_MONTHS }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
+          const seeded = normProjects(FORECAST_PROJECTS);
+          const res = await forecastSave({ projects: seeded, months: padLabels(FORECAST_MONTHS) }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
         }
       } catch (e) {}
     };
@@ -1185,7 +1228,7 @@ function useForecast() {
       try {
         for (let i = 0; i < 5; i++) {
           const res = await forecastSave({ projects: sp, months: sm }, baseV);
-          if (res && res.conflict) { const server = res.doc || {}; const m = reapply({ projects: withFcIds(server.projects || []), months: (server.months && server.months.length) ? server.months : sm }); sp = m.projects; sm = m.months; setProjects(sp); setMonths(sm); baseV = res.v; continue; }
+          if (res && res.conflict) { const server = res.doc || {}; const m = reapply({ projects: normProjects(server.projects || []), months: padLabels((server.months && server.months.length) ? server.months : sm) }); sp = m.projects; sm = m.months; setProjects(sp); setMonths(sm); baseV = res.v; continue; }
           if (res && res.ok) { ver.current = res.v; break; }
           break;
         }
@@ -1196,7 +1239,8 @@ function useForecast() {
   const addProject = (tmpl) => { const np = { _id: uid(), studio: "", pm: "", number: "", name: "New project", comp: 0, backlog: 0, blEtc: 0, months: [0, 0, 0, 0, 0, 0], ...(tmpl || {}) }; commit([np, ...projects], months, (doc) => ({ projects: [np, ...doc.projects], months: doc.months })); return np._id; };
   const removeProject = (id) => commit(projects.filter(p => p._id !== id), months, (doc) => ({ projects: doc.projects.filter(p => p._id !== id), months: doc.months }));
   const setMonthLabel = (idx, label) => commit(projects, months.map((m, i) => i === idx ? label : m), (doc) => ({ projects: doc.projects, months: doc.months.map((m, i) => i === idx ? label : m) }));
-  return { projects, months, rev, update, addProject, removeProject, setMonthLabel };
+  const replaceAll = (newProjects) => commit(normProjects(newProjects), months, () => ({ projects: normProjects(newProjects), months: months })); // import: replace the whole project set
+  return { projects, months, rev, update, addProject, removeProject, setMonthLabel, replaceAll };
 }
 // Parse a typed currency/number string into a number (strips $ and commas).
 const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n); };
@@ -1221,11 +1265,22 @@ function FcTextInput({ value, onCommit, placeholder, bold, style }) {
 
 /* ---------------- Forecast Gantt (editable revenue bars + financial columns across months) ---------------- */
 function ForecastView({ ctx }) {
-  const { projects: FP, rev, update, addProject, removeProject, months: MONTHS, setMonthLabel } = useForecast();
+  const { projects: FP, rev, update, addProject, removeProject, months: MONTHS, setMonthLabel, replaceAll } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
   const [showAll, setShowAll] = useState(true);
+  const importRef = useRef(null);
+  const doImport = async (file) => {
+    if (!file) return;
+    try {
+      const projs = await parseForecastFile(file, MONTHS);
+      if (!projs.length) { alert("No projects found — make sure it's a Deltek “Project Forecast” export (.xlsx)."); return; }
+      if (!window.confirm("Import " + projs.length + " projects from this file? This replaces the current forecast for everyone.")) return;
+      replaceAll(projs);
+      alert("Imported " + projs.length + " projects from the export.");
+    } catch (e) { alert("Couldn't read that file: " + (e && e.message ? e.message : e)); }
+  };
   const pms = [...new Set(FP.map(p => p.pm).filter(Boolean))].sort();
   const studios = [...new Set(FP.map(p => p.studio).filter(Boolean))].sort();
   const fmt = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n || 0)).toLocaleString();
@@ -1255,7 +1310,7 @@ function ForecastView({ ctx }) {
   const selStyle = { background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8, color: "var(--ink)", fontSize: 13, padding: "7px 10px", fontFamily: "Outfit" };
   const NCW = 84; const DELW = 26;        // financial column width + delete-button slot
   const LW = 168 + NCW * 4 + DELW;        // name + comp + backlog + lessETC + expected + delete
-  const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))`, minWidth: 360 };
+  const cellGrid = { flex: 1, display: "grid", gridTemplateColumns: `repeat(${M},minmax(0,1fr))`, minWidth: Math.max(360, M * 62) };
   const colLbl = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 10.5, fontWeight: 700, letterSpacing: ".3px" };
   const colNum = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 11.5, fontWeight: 800 };
   return (
@@ -1275,6 +1330,8 @@ function ForecastView({ ctx }) {
           <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />Show $0 projects
         </label>
         <div style={{ flex: 1 }} />
+        <button className="btn btn-sm" onClick={() => importRef.current && importRef.current.click()} title="Import a Deltek Project Forecast export (.xlsx)"><Upload size={14} />Import Excel</button>
+        <input ref={importRef} type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { const f = e.target.files && e.target.files[0]; e.target.value = ""; doImport(f); }} />
         <button className="btn btn-sm" onClick={() => addProject({ pm: pm !== "all" ? pm : "", studio: studio !== "all" ? studio : "" })} title="Add a new forecast project"><Plus size={14} />Project</button>
         <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Open the projections table"><TrendingUp size={14} />Projections</button>
       </div>
@@ -1382,7 +1439,7 @@ function ProjectionsView({ ctx }) {
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ overflow: "auto", maxHeight: "74vh" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1040, background: "var(--panel)" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 760 + MONTHS.length * 78, background: "var(--panel)" }}>
             <thead>
               <tr>
                 <th style={nameTh}>Project</th>
