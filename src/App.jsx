@@ -160,16 +160,30 @@ const css = `
 /* calendar */
 .cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .cal-m { font-family:'Fraunces'; font-size:21px; font-weight:600; }
-.cal-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; }
-.cal-dow { text-align:center; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding-bottom:4px; }
-.cal-cell { background:var(--panel); border:1px solid var(--line); border-radius:11px; min-height:84px; min-width:0; padding:7px; cursor:pointer; transition:.12s; overflow:hidden; }
-.cal-cell:hover { border-color:var(--primary); }
-.cal-cell.blank { background:transparent; border:none; cursor:default; }
-.cal-cell.today { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
-.cal-num { font-size:12.5px; font-weight:600; color:var(--muted); }
-.cal-cell.today .cal-num { color:var(--primary); }
-.cal-ev { font-size:10.5px; font-weight:600; color:#fff; border-radius:6px; padding:2px 5px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.cal-ev.done { opacity:.5; text-decoration:line-through; }
+.cal-dow-row { display:grid; grid-template-columns:repeat(7,1fr); }
+.cal-dow { text-align:left; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px; padding:0 0 6px 8px; }
+.cal-month { border-top:1px solid var(--line); border-left:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.cal-week { position:relative; }
+.cal-week-bg { position:absolute; inset:0; display:grid; grid-template-columns:repeat(7,1fr); }
+.cal-bgcell { border-right:1px solid var(--line); border-bottom:1px solid var(--line); position:relative; transition:background .12s; }
+.cal-bgcell.out { background:var(--panel2); opacity:.55; }
+.cal-bgcell.today { background:rgba(79,168,232,0.08); box-shadow:inset 0 0 0 2px var(--primary); }
+.cal-bgcell:hover { background:var(--raise); cursor:pointer; }
+.cal-add { position:absolute; top:5px; right:5px; width:18px; height:18px; border-radius:5px; border:none; background:var(--panel2); color:var(--muted); cursor:pointer; font-size:14px; line-height:1; display:grid; place-items:center; padding:0; opacity:0; transition:.12s; }
+.cal-bgcell:hover .cal-add { opacity:1; }
+.cal-week-fg { position:relative; pointer-events:none; padding-top:5px; }
+.cal-nums { display:grid; grid-template-columns:repeat(7,1fr); margin-bottom:3px; }
+.cal-n { font-size:12.5px; font-weight:600; color:var(--muted); padding-left:8px; }
+.cal-n.out { opacity:.5; }
+.cal-n.today { color:var(--primary); font-weight:700; }
+.cal-lanes { display:grid; grid-template-columns:repeat(7,1fr); grid-auto-rows:19px; row-gap:2px; }
+.cal-bar { pointer-events:auto; display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600; color:var(--ink); border-radius:5px; padding:1px 6px; margin:0 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; min-width:0; height:17px; box-sizing:border-box; }
+.cal-bar.cont-l { border-top-left-radius:0; border-bottom-left-radius:0; margin-left:0; }
+.cal-bar.cont-r { border-top-right-radius:0; border-bottom-right-radius:0; margin-right:0; }
+.cal-bar.done { opacity:.55; text-decoration:line-through; }
+.cal-bar-dot { width:7px; height:7px; border-radius:99px; flex-shrink:0; }
+.cal-more { pointer-events:auto; font-size:10.5px; font-weight:600; color:var(--muted); cursor:pointer; padding-left:8px; }
+.cal-more:hover { color:var(--primary); }
 
 /* gantt */
 .gantt-wrap { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:16px; overflow:hidden; }
@@ -3683,6 +3697,43 @@ function parseTrackerDates(s) {
   }
   return out;
 }
+// Default buckets (editable) — events are grouped into buckets and take their bucket's color.
+const SEED_BUCKETS = [
+  { id: "bk_studio", name: "Studio Schedule", color: "#4FA8E8" },
+  { id: "bk_prop", name: "Proposals", color: "#E8A53C" },
+  { id: "bk_qaqc_review", name: "QAQC Ready for Review - M/P", color: "#9A6BF0" },
+  { id: "bk_qaqc_pickup", name: "QAQC Complete - Ready for Pickup", color: "#33B36B" },
+  { id: "bk_ooo", name: "Out of Office/RTO", color: "#E03A3E" },
+];
+const BUCKET_PALETTE = ["#4FA8E8", "#E8A53C", "#9A6BF0", "#33B36B", "#E03A3E", "#E0734A", "#2E80C2", "#C56BD6", "#33B36B", "#7686A0"];
+// Date helpers (ISO yyyy-mm-dd compares lexicographically, so plain string compares work for ranges).
+const isoOf = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const addDaysIso = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+// Assign each week's items to horizontal lanes so multi-day bars never overlap. Returns segments with {sc, ec, lane}.
+function layoutWeek(items, weekDates) {
+  const ws = weekDates[0], we = weekDates[6];
+  const segs = [];
+  items.forEach(it => {
+    if (it.end < ws || it.start > we) return; // doesn't touch this week
+    const sc = it.start <= ws ? 0 : weekDates.indexOf(it.start);
+    const ec = it.end >= we ? 6 : weekDates.indexOf(it.end);
+    if (sc < 0 || ec < 0) return;
+    segs.push({ ...it, sc, ec, contStart: it.start < ws, contEnd: it.end > we });
+  });
+  // Longer/earlier bars first so they get the top lanes (more stable layout).
+  segs.sort((a, b) => (a.sc - b.sc) || ((b.ec - b.sc) - (a.ec - a.sc)) || String(a.title).localeCompare(String(b.title)));
+  const lanes = [];
+  segs.forEach(seg => {
+    let placed = false;
+    for (let li = 0; li < lanes.length; li++) {
+      let free = true;
+      for (let c = seg.sc; c <= seg.ec; c++) if (lanes[li][c]) { free = false; break; }
+      if (free) { for (let c = seg.sc; c <= seg.ec; c++) lanes[li][c] = seg; seg.lane = li; placed = true; break; }
+    }
+    if (!placed) { const nl = Array(7).fill(null); for (let c = seg.sc; c <= seg.ec; c++) nl[c] = seg; seg.lane = lanes.length; lanes.push(nl); }
+  });
+  return segs;
+}
 function CalendarView({ ctx }) {
   const gd = ctx.gantt;
   const gotoGantt = ctx.gotoGantt;
@@ -3694,110 +3745,188 @@ function CalendarView({ ctx }) {
   const [notes, setNotes] = useState(loadCalNotes);
   useEffect(() => { saveCalNotes(notes); }, [notes]);
   const [dayOpen, setDayOpen] = useState(null);
-  const [dayEdit, setDayEdit] = useState(null); // iso of the day being edited (double-click)
-  const [events, setEvents] = useState([]);     // shared custom calendar events (DB doc id=2)
-  const [cats, setCats] = useState({ due: true, bid: true, event: true }); // category filters (like the tracker)
+  const [evEdit, setEvEdit] = useState(null);   // event object being added/edited (null = closed)
+  const [bkMgr, setBkMgr] = useState(false);     // bucket-manager modal open
+  const [events, setEvents] = useState([]);      // shared custom calendar events (DB doc id=2)
+  const [buckets, setBuckets] = useState(SEED_BUCKETS);
+  const [cats, setCats] = useState({ due: true, bid: true }); // tracker-derived date filters
+  const [hiddenBk, setHiddenBk] = useState({});  // bucket ids (or "none") that are filtered out
   const evV = useRef(0);
   const evSaving = useRef(false);
+  // Old events stored a single `date`; normalize every event to a start/end range.
+  const migrateEv = (e) => ({ ...e, start: e.start || e.date, end: e.end || e.start || e.date });
   useEffect(() => {
     let on = true;
     let loadedEv = false;
-    const pull = async () => { if (evSaving.current) return; try { const v = await apiVersion(2); if (loadedEv && v === evV.current) return; loadedEv = true; const d = await calLoad(); if (on && d && d.v !== evV.current) { evV.current = d.v || 0; setEvents(d.events || []); } } catch (e) {} };
+    const pull = async () => {
+      if (evSaving.current) return;
+      try {
+        const v = await apiVersion(2);
+        if (loadedEv && v === evV.current) return;
+        loadedEv = true;
+        const d = await calLoad();
+        if (on && d && d.v !== evV.current) {
+          evV.current = d.v || 0;
+          setEvents((d.events || []).map(migrateEv));
+          if (d.buckets && d.buckets.length) setBuckets(d.buckets);
+        }
+      } catch (e) {}
+    };
     pull();
     const t = setInterval(pull, 2500);
     return () => { on = false; clearInterval(t); };
   }, []);
-  // Apply an add/edit/delete to the shared events doc; if a teammate saved meanwhile, re-apply just this op onto their copy and retry.
-  const mutate = (list, op) => op.kind === "add" ? [...list, op.ev] : op.kind === "edit" ? list.map(e => e.id === op.ev.id ? op.ev : e) : list.filter(e => e.id !== op.id);
+  // Apply one mutation to the whole {events, buckets} doc. Used both for the optimistic local update
+  // and to re-apply the same op onto a teammate's copy if we hit a save conflict.
+  const applyOp = (doc, op) => {
+    const ev = doc.events || [], bk = doc.buckets || [];
+    switch (op.t) {
+      case "ev-add": return { events: [...ev, op.ev], buckets: bk };
+      case "ev-edit": return { events: ev.map(e => e.id === op.ev.id ? op.ev : e), buckets: bk };
+      case "ev-del": return { events: ev.filter(e => e.id !== op.id), buckets: bk };
+      case "bk-add": return { events: ev, buckets: [...bk, op.bk] };
+      case "bk-edit": return { events: ev, buckets: bk.map(b => b.id === op.bk.id ? op.bk : b) };
+      case "bk-del": return { events: ev.map(e => e.bucket === op.id ? { ...e, bucket: null } : e), buckets: bk.filter(b => b.id !== op.id) };
+      default: return { events: ev, buckets: bk };
+    }
+  };
   const commit = async (op) => {
-    const next = mutate(events, op);
-    setEvents(next);
+    let next = applyOp({ events, buckets }, op);
+    setEvents(next.events); setBuckets(next.buckets);
     evSaving.current = true;
     let toSave = next, baseV = evV.current;
     try {
       for (let i = 0; i < 5; i++) {
-        const res = await calSave({ events: toSave }, baseV);
-        if (res && res.conflict) { const server = (res.doc && res.doc.events) || []; toSave = mutate(server, op); setEvents(toSave); baseV = res.v; continue; }
+        const res = await calSave(toSave, baseV);
+        if (res && res.conflict) {
+          const server = { events: ((res.doc && res.doc.events) || []).map(migrateEv), buckets: (res.doc && res.doc.buckets && res.doc.buckets.length) ? res.doc.buckets : buckets };
+          toSave = applyOp(server, op); setEvents(toSave.events); setBuckets(toSave.buckets); baseV = res.v; continue;
+        }
         if (res && res.ok) { evV.current = res.v; break; }
         break;
       }
     } catch (e) {} finally { evSaving.current = false; }
   };
-  const EV_COLORS = [["#9A6BF0", "Purple"], ["#E03A3E", "Red"], ["#E8A53C", "Amber"], ["#33B36B", "Green"], ["#4FA8E8", "Blue"], ["#E0734A", "Orange"]];
+  const bucketById = (id) => buckets.find(b => b.id === id);
   const projOpts = [];
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => { const nm = r.projectName || r.name; if (nm) projOpts.push({ label: nm, sheet: s.id, rowId: r._id, key: s.id + "::" + r._id }); }));
-  const [newTitle, setNewTitle] = useState("");
-  const [newColor, setNewColor] = useState("#9A6BF0");
-  const [newLink, setNewLink] = useState("");
 
   const first = new Date(cur.y, cur.m, 1);
-  const startDow = first.getDay();
-  const days = new Date(cur.y, cur.m + 1, 0).getDate();
+  const gridStart = addDaysIso(first, -first.getDay()); // back up to the Sunday on/before the 1st
   const today = todayISO();
   const monthName = first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const LANES = 3; // bars shown per day before an "+N more" row
 
-  const byDay = {};
-  const add = (iso, ev) => { if (!iso) return; (byDay[iso] = byDay[iso] || []).push(ev); };
-  // Project due dates + bid/permit dates from the shared tracker (each gated by its category filter).
+  // 6-week grid including adjacent-month days (so multi-day bars flow across month edges, like Planner).
+  const weeks = [];
+  for (let w = 0; w < 6; w++) {
+    const wk = [];
+    for (let i = 0; i < 7; i++) { const dt = addDaysIso(gridStart, w * 7 + i); const iso = isoOf(dt); wk.push({ iso, day: dt.getDate(), inMonth: dt.getMonth() === cur.m, isToday: iso === today }); }
+    weeks.push(wk);
+  }
+
+  // One flat list of calendar items, each with a start/end range. Tracker dates are single-day; events can span.
+  const hasUnbucketed = (events || []).some(e => !e.bucket);
+  const items = [];
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
     const nm = r.projectName || r.name; if (!nm) return;
-    if (cats.due) parseTrackerDates(r.dueDates).forEach(d => add(d, { type: "due", label: nm, color: "var(--primary)", sheet: s.id, rowId: r._id }));
-    if (cats.bid) parseTrackerDates(r.bidPermitDate).forEach(d => add(d, { type: "bid/permit", label: nm, color: "var(--teal)", sheet: s.id, rowId: r._id }));
+    if (cats.due) parseTrackerDates(r.dueDates).forEach(d => items.push({ key: "due-" + s.id + r._id + d, start: d, end: d, title: nm, color: "var(--primary)", type: "due", sheet: s.id, rowId: r._id }));
+    if (cats.bid) parseTrackerDates(r.bidPermitDate).forEach(d => items.push({ key: "bid-" + s.id + r._id + d, start: d, end: d, title: nm, color: "var(--teal)", type: "bid/permit", sheet: s.id, rowId: r._id }));
   }));
-  // Legacy Gantt due dates, if any.
   if (cats.due) (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
-    add(p.due, { type: "project", label: p.name, color: "var(--primary)", pid: p.id, done: !!p.done });
-    p.groups.forEach(g => add(g.end, { type: "task", label: g.name, color: "var(--teal)", pid: p.id, done: gComplete(g) }));
+    if (p.due) items.push({ key: "gp-" + p.id, start: p.due, end: p.due, title: p.name, color: "var(--primary)", type: "project", pid: p.id, done: !!p.done });
+    p.groups.forEach(g => { if (g.end) items.push({ key: "gg-" + g.id, start: g.end, end: g.end, title: g.name, color: "var(--teal)", type: "task", pid: p.id, done: gComplete(g) }); });
   });
-  // Custom shared events.
-  if (cats.event) (events || []).forEach(e => add(e.date, { type: "event", label: e.title || "(untitled)", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId, custom: true, id: e.id }));
+  (events || []).forEach(e => {
+    const bid = e.bucket || "none";
+    if (hiddenBk[bid]) return;
+    const bk = bucketById(e.bucket);
+    const start = e.start || e.date, end = e.end || start;
+    if (!start) return;
+    items.push({ key: e.id, id: e.id, start, end: end < start ? start : end, title: e.title || "(untitled)", color: bk ? bk.color : (e.color || "#9A6BF0"), type: "event", custom: true, sheet: e.sheet, rowId: e.rowId, bucket: e.bucket });
+  });
 
-  const cells = [];
-  for (let i = 0; i < startDow; i++) cells.push(null);
-  for (let d = 1; d <= days; d++) cells.push(d);
   const SIZE = { S: 10.5, M: 12.5, L: 15 };
   const setNote = (iso, patch) => setNotes(n => ({ ...n, [iso]: { text: "", size: "M", ...(n[iso] || {}), ...patch } }));
   const delNote = (iso) => setNotes(n => { const c = { ...n }; delete c[iso]; return c; });
+  const newEvent = (iso) => setEvEdit({ id: uid(), _new: true, start: iso, end: iso, title: "", bucket: (buckets[0] && buckets[0].id) || null });
+  const openItem = (it) => {
+    if (it.custom) { const e = (events || []).find(x => x.id === it.id); if (e) setEvEdit(migrateEv(e)); return; }
+    if (it.pid) { gotoGantt(it.pid); return; }
+    if (it.rowId) { ctx.gotoTrackerRow(it.sheet, it.rowId); return; }
+    ctx.setView("tracker");
+  };
 
   return (
     <>
-      <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Project due dates & bid/permit dates from the tracker. Double-click a day to add, edit, or delete shared events.</div></div>
-        <div style={{ display: "flex", gap: 8, fontSize: 11.5, color: "var(--muted)", alignItems: "center" }}>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Show:</span>
-          {[["due", "var(--primary)", "Due dates"], ["bid", "var(--teal)", "Bid / permit"], ["event", "#9A6BF0", "Events"]].map(([k, col, label]) => (
+      <div className="head"><div><div className="h-title">Calendar</div><div className="h-sub">Tracker due & bid/permit dates plus shared events. Events can span multiple days and are grouped into buckets you can filter.</div></div>
+        <div style={{ display: "flex", gap: 6, fontSize: 11.5, color: "var(--muted)", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "62%" }}>
+          {[["due", "var(--primary)", "Due dates"], ["bid", "var(--teal)", "Bid / permit"]].map(([k, col, label]) => (
             <button key={k} onClick={() => setCats(c => ({ ...c, [k]: !c[k] }))} title={`Toggle ${label}`}
               style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: cats[k] ? "var(--panel2)" : "transparent", color: cats[k] ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: cats[k] ? 1 : 0.55 }}>
               <span style={{ width: 9, height: 9, borderRadius: 99, background: col }} />{label}
             </button>
           ))}
+          <span style={{ width: 1, height: 16, background: "var(--line)", margin: "0 2px" }} />
+          {buckets.map(b => (
+            <button key={b.id} onClick={() => setHiddenBk(h => ({ ...h, [b.id]: !h[b.id] }))} title={`Toggle ${b.name}`}
+              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: !hiddenBk[b.id] ? "var(--panel2)" : "transparent", color: !hiddenBk[b.id] ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: !hiddenBk[b.id] ? 1 : 0.55 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 99, background: b.color }} />{b.name}
+            </button>
+          ))}
+          {hasUnbucketed && (
+            <button onClick={() => setHiddenBk(h => ({ ...h, none: !h.none }))} title="Toggle events with no bucket"
+              style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: !hiddenBk.none ? "var(--panel2)" : "transparent", color: !hiddenBk.none ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: !hiddenBk.none ? 1 : 0.55 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 99, background: "#9A6BF0" }} />Other
+            </button>
+          )}
+          <button className="btn btn-sm" onClick={() => setBkMgr(true)} title="Add, rename, recolor or delete buckets" style={{ gap: 5 }}><Settings size={13} />Buckets</button>
         </div>
       </div>
       <div className="panel">
         <div className="cal-head">
           <div className="cal-m">{monthName}</div>
           <div style={{ display: "flex", gap: 6 }}>
+            <button className="btn btn-sm btn-pri" onClick={() => newEvent(today)} style={{ gap: 5 }}><Plus size={14} />Event</button>
             <button className="btn icon-btn" onClick={() => setCur(c => { const m = c.m - 1; return m < 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m }; })}><ChevronLeft size={17} /></button>
             <button className="btn btn-sm" onClick={() => { const d = new Date(); setCur({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>
             <button className="btn icon-btn" onClick={() => setCur(c => { const m = c.m + 1; return m > 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m }; })}><ChevronRight size={17} /></button>
           </div>
         </div>
-        <div className="cal-grid">
+        <div className="cal-dow-row">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => <div className="cal-dow" key={d}>{d}</div>)}
-          {cells.map((d, i) => {
-            if (d === null) return <div className="cal-cell blank" key={"b" + i} />;
-            const iso = `${cur.y}-${String(cur.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-            const evs = byDay[iso] || [];
-            const note = notes[iso];
+        </div>
+        <div className="cal-month">
+          {weeks.map((wk, w) => {
+            const segs = layoutWeek(items, wk.map(c => c.iso));
+            const shown = segs.filter(s => s.lane < LANES);
+            const moreByCol = Array(7).fill(0);
+            segs.filter(s => s.lane >= LANES).forEach(s => { for (let c = s.sc; c <= s.ec; c++) moreByCol[c]++; });
+            const anyMore = moreByCol.some(n => n > 0);
             return (
-              <div className={`cal-cell ${iso === today ? "today" : ""}`} key={iso} onClick={() => setDayOpen(iso)} onDoubleClick={() => setDayEdit(iso)} title="Click for the day · + to add an event" style={{ cursor: "pointer", position: "relative" }}>
-                <div className="cal-num">{d}</div>
-                <button title="Add an event" onClick={(e) => { e.stopPropagation(); setDayEdit(iso); }} style={{ position: "absolute", top: 3, right: 3, width: 18, height: 18, borderRadius: 5, border: "none", background: "var(--panel2)", color: "var(--muted)", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "grid", placeItems: "center", padding: 0 }}>+</button>
-                {evs.slice(0, 3).map((ev, j) => (
-                  <div className={`cal-ev ${ev.done ? "done" : ""}`} key={j} style={{ background: ev.color }} title={`${ev.label} — ${ev.type}`}
-                    onClick={(e) => { e.stopPropagation(); ev.pid ? gotoGantt(ev.pid) : (ev.rowId ? ctx.gotoTrackerRow(ev.sheet, ev.rowId) : (ev.custom ? setDayEdit(iso) : ctx.setView("tracker"))); }}>{ev.label}</div>
-                ))}
-                {evs.length > 3 && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>+{evs.length - 3} more</div>}
-                {note && note.text && <div style={{ marginTop: 3, background: "rgba(232,165,60,.16)", border: "1px solid rgba(232,165,60,.3)", borderRadius: 6, padding: "3px 5px", fontSize: SIZE[note.size] || 12.5, color: "var(--ink)", lineHeight: 1.25, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>{note.text}</div>}
+              <div className="cal-week" key={w}>
+                <div className="cal-week-bg">
+                  {wk.map((c, ci) => (
+                    <div key={ci} className={`cal-bgcell${c.inMonth ? "" : " out"}${c.isToday ? " today" : ""}`} onClick={() => setDayOpen(c.iso)} title="Click for the day · + to add an event">
+                      <button className="cal-add" title="Add an event" onClick={(e) => { e.stopPropagation(); newEvent(c.iso); }}>+</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="cal-week-fg">
+                  <div className="cal-nums">{wk.map((c, ci) => <div key={ci} className={`cal-n${c.inMonth ? "" : " out"}${c.isToday ? " today" : ""}`}>{c.day}</div>)}</div>
+                  <div className="cal-lanes" style={{ minHeight: LANES * 21 }}>
+                    {shown.map(seg => (
+                      <div key={seg.key} className={`cal-bar${seg.done ? " done" : ""}${seg.contStart ? " cont-l" : ""}${seg.contEnd ? " cont-r" : ""}`}
+                        style={{ gridColumn: `${seg.sc + 1} / ${seg.ec + 2}`, gridRow: seg.lane + 1, background: (typeof seg.color === "string" && seg.color.startsWith("#")) ? seg.color + "26" : "var(--raise)", borderLeft: "3px solid " + seg.color }}
+                        title={seg.title} onClick={(e) => { e.stopPropagation(); openItem(seg); }}>
+                        <span className="cal-bar-dot" style={{ background: seg.color }} />{seg.title}
+                      </div>
+                    ))}
+                    {anyMore && moreByCol.map((n, ci) => n > 0 ? (
+                      <div key={"m" + ci} className="cal-more" style={{ gridColumn: ci + 1, gridRow: LANES + 1 }} onClick={(e) => { e.stopPropagation(); setDayOpen(wk[ci].iso); }}>+{n} more</div>
+                    ) : null)}
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -3807,23 +3936,29 @@ function CalendarView({ ctx }) {
       {dayOpen && (() => {
         const note = notes[dayOpen] || { text: "", size: "M" };
         const dateLabel = new Date(dayOpen + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-        const evs = byDay[dayOpen] || [];
+        const dayItems = items.filter(it => it.start <= dayOpen && it.end >= dayOpen);
         return (
           <div className="ov" onClick={() => setDayOpen(null)}>
             <div className="modal" onClick={e => e.stopPropagation()}>
               <div className="modal-h"><h2>{dateLabel}</h2><button className="btn btn-ghost icon-btn" onClick={() => setDayOpen(null)}><X size={18} /></button></div>
-              {evs.length > 0 && (
-                <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Due this day</div>
-                  {evs.map((ev, j) => (
-                    <div key={j} className="row-i" style={{ padding: "6px 4px" }} onClick={() => { ev.pid ? gotoGantt(ev.pid) : (ev.rowId ? ctx.gotoTrackerRow(ev.sheet, ev.rowId) : ctx.setView("tracker")); setDayOpen(null); }}>
-                      <span style={{ width: 9, height: 9, borderRadius: 99, background: ev.color }} />
-                      <span style={{ flex: 1, fontSize: 13.5, textDecoration: ev.done ? "line-through" : "none", color: ev.done ? "var(--muted)" : "var(--ink)" }}>{ev.label} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {ev.type}</span></span>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, color: "var(--muted)" }}>On this day</div>
+                  <button className="btn btn-sm" onClick={() => { newEvent(dayOpen); setDayOpen(null); }} style={{ gap: 5 }}><Plus size={13} />Add event</button>
+                </div>
+                {dayItems.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)" }}>Nothing on this day.</div>}
+                {dayItems.map((it, j) => {
+                  const bk = it.custom ? bucketById(it.bucket) : null;
+                  const span = it.start !== it.end ? ` · ${it.start.slice(5)}→${it.end.slice(5)}` : "";
+                  return (
+                    <div key={j} className="row-i" style={{ padding: "6px 4px" }} onClick={() => { openItem(it); setDayOpen(null); }}>
+                      <span style={{ width: 9, height: 9, borderRadius: 99, background: it.color }} />
+                      <span style={{ flex: 1, fontSize: 13.5, textDecoration: it.done ? "line-through" : "none", color: it.done ? "var(--muted)" : "var(--ink)" }}>{it.title} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {bk ? bk.name : it.type}{span}</span></span>
                       <ChevronRight size={15} color="var(--dim)" />
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                })}
+              </div>
               <div className="fld">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <label style={{ marginBottom: 0 }}>Note</label>
@@ -3831,7 +3966,7 @@ function CalendarView({ ctx }) {
                     {["S", "M", "L"].map(s => <button key={s} className={(note.size || "M") === s ? "on" : ""} onClick={() => setNote(dayOpen, { size: s })}>{s}</button>)}
                   </div>
                 </div>
-                <textarea value={note.text} onChange={e => setNote(dayOpen, { text: e.target.value })} placeholder="Write a quick note for this day…" style={{ fontSize: SIZE[note.size] || 12.5, minHeight: 90, resize: "vertical" }} autoFocus />
+                <textarea value={note.text} onChange={e => setNote(dayOpen, { text: e.target.value })} placeholder="Write a quick note for this day…" style={{ fontSize: SIZE[note.size] || 12.5, minHeight: 80, resize: "vertical" }} />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-pri" style={{ flex: 1, justifyContent: "center" }} onClick={() => setDayOpen(null)}><Check size={15} />Done</button>
@@ -3842,41 +3977,65 @@ function CalendarView({ ctx }) {
         );
       })()}
 
-      {dayEdit && (() => {
-        const dlabel = new Date(dayEdit + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-        const dayEvents = events.filter(e => e.date === dayEdit);
-        const addNew = () => { const title = newTitle.trim(); if (!title) return; const link = projOpts.find(o => o.key === newLink); commit({ kind: "add", ev: { id: uid(), date: dayEdit, title, color: newColor, sheet: link ? link.sheet : undefined, rowId: link ? link.rowId : undefined } }); setNewTitle(""); setNewLink(""); };
+      {evEdit && (() => {
+        const set = (patch) => setEvEdit(e => ({ ...e, ...patch }));
+        const saveEv = () => {
+          const title = (evEdit.title || "").trim(); if (!title) return;
+          let start = evEdit.start, end = evEdit.end || evEdit.start; if (end < start) end = start;
+          commit({ t: evEdit._new ? "ev-add" : "ev-edit", ev: { id: evEdit.id, title, bucket: evEdit.bucket || null, start, end, sheet: evEdit.sheet, rowId: evEdit.rowId } });
+          setEvEdit(null);
+        };
         return (
-          <div className="ov" onClick={() => setDayEdit(null)}>
+          <div className="ov" onClick={() => setEvEdit(null)}>
             <div className="modal" onClick={e => e.stopPropagation()}>
-              <div className="modal-h"><h2>Events · {dlabel}</h2><button className="btn btn-ghost icon-btn" onClick={() => setDayEdit(null)}><X size={18} /></button></div>
-              {dayEvents.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 12 }}>No events yet — add one below.</div>}
-              {dayEvents.map(e => (
-                <div key={e.id} style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-                  <input defaultValue={e.title} onBlur={ev => { const v = ev.target.value.trim(); if (v && v !== e.title) commit({ kind: "edit", ev: { ...e, title: v } }); }} style={{ flex: 1, minWidth: 0 }} />
-                  <select value={e.color || "#9A6BF0"} onChange={ev => commit({ kind: "edit", ev: { ...e, color: ev.target.value } })} style={{ width: 84 }}>
-                    {EV_COLORS.map(([c, name]) => <option key={c} value={c}>{name}</option>)}
-                  </select>
-                  <select value={e.rowId ? (e.sheet + "::" + e.rowId) : ""} onChange={ev => { const o = projOpts.find(x => x.key === ev.target.value); commit({ kind: "edit", ev: { ...e, sheet: o ? o.sheet : undefined, rowId: o ? o.rowId : undefined } }); }} style={{ width: 150 }}>
-                    <option value="">No link</option>
-                    {projOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-                  </select>
-                  <button className="btn btn-ghost icon-btn" title="Delete event" onClick={() => commit({ kind: "del", id: e.id })} style={{ color: "#c0392b" }}><Trash2 size={15} /></button>
-                </div>
-              ))}
-              <div style={{ borderTop: "1px solid var(--line)", marginTop: 10, paddingTop: 12 }}>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Add an event</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                  <input value={newTitle} onChange={e => setNewTitle(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addNew(); }} placeholder="Event title…" style={{ flex: 1, minWidth: 140 }} autoFocus />
-                  <select value={newColor} onChange={e => setNewColor(e.target.value)} style={{ width: 84 }}>{EV_COLORS.map(([c, name]) => <option key={c} value={c}>{name}</option>)}</select>
-                  <select value={newLink} onChange={e => setNewLink(e.target.value)} style={{ width: 150 }}><option value="">No link</option>{projOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}</select>
-                  <button className="btn btn-pri" onClick={addNew}><Plus size={15} />Add</button>
-                </div>
+              <div className="modal-h"><h2>{evEdit._new ? "New event" : "Edit event"}</h2><button className="btn btn-ghost icon-btn" onClick={() => setEvEdit(null)}><X size={18} /></button></div>
+              <div className="fld"><label>Title</label><input autoFocus value={evEdit.title} onChange={e => set({ title: e.target.value })} onKeyDown={e => { if (e.key === "Enter") saveEv(); }} placeholder="Event title…" /></div>
+              <div className="fld"><label>Bucket</label>
+                <select value={evEdit.bucket || ""} onChange={e => set({ bucket: e.target.value || null })}>
+                  <option value="">No bucket</option>
+                  {buckets.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div className="row2">
+                <div className="fld"><label>Start date</label><input type="date" value={evEdit.start || ""} onChange={e => set({ start: e.target.value, end: (!evEdit.end || evEdit.end < e.target.value) ? e.target.value : evEdit.end })} /></div>
+                <div className="fld"><label>End date</label><input type="date" value={evEdit.end || evEdit.start || ""} min={evEdit.start || ""} onChange={e => set({ end: e.target.value })} /></div>
+              </div>
+              <div className="fld"><label>Link to project (optional)</label>
+                <select value={evEdit.rowId ? (evEdit.sheet + "::" + evEdit.rowId) : ""} onChange={e => { const o = projOpts.find(x => x.key === e.target.value); set({ sheet: o ? o.sheet : undefined, rowId: o ? o.rowId : undefined }); }}>
+                  <option value="">No link</option>
+                  {projOpts.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button className="btn btn-pri" style={{ flex: 1, justifyContent: "center" }} onClick={saveEv}><Check size={16} />Save</button>
+                {!evEdit._new && <button className="btn" onClick={() => { commit({ t: "ev-del", id: evEdit.id }); setEvEdit(null); }}><Trash2 size={15} />Delete</button>}
               </div>
             </div>
           </div>
         );
       })()}
+
+      {bkMgr && (
+        <div className="ov" onClick={() => setBkMgr(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-h"><h2>Buckets</h2><button className="btn btn-ghost icon-btn" onClick={() => setBkMgr(false)}><X size={18} /></button></div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Events take their bucket's color. Filter the calendar by toggling buckets in the header.</div>
+            {buckets.map(b => (
+              <div key={b.id} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                <input defaultValue={b.name} onBlur={e => { const v = e.target.value.trim(); if (v && v !== b.name) commit({ t: "bk-edit", bk: { ...b, name: v } }); }} style={{ flex: 1, minWidth: 0 }} />
+                <div className="swatches" style={{ display: "flex", gap: 4 }}>
+                  {BUCKET_PALETTE.filter((c, i, a) => a.indexOf(c) === i).map(c => (
+                    <span key={c} onClick={() => commit({ t: "bk-edit", bk: { ...b, color: c } })} title={c}
+                      style={{ width: 18, height: 18, borderRadius: 99, background: c, cursor: "pointer", boxShadow: b.color === c ? "0 0 0 2px var(--bg), 0 0 0 4px " + c : "none" }} />
+                  ))}
+                </div>
+                <button className="btn btn-ghost icon-btn" title="Delete bucket (its events become unbucketed)" onClick={() => { if (window.confirm(`Delete bucket "${b.name}"? Its events stay but lose their bucket.`)) commit({ t: "bk-del", id: b.id }); }} style={{ color: "#c0392b" }}><Trash2 size={15} /></button>
+              </div>
+            ))}
+            <button className="btn" style={{ width: "100%", justifyContent: "center", marginTop: 4 }} onClick={() => commit({ t: "bk-add", bk: { id: "bk_" + uid(), name: "New bucket", color: BUCKET_PALETTE[buckets.length % BUCKET_PALETTE.length] } })}><Plus size={15} />Add bucket</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
