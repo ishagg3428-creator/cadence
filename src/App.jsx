@@ -646,8 +646,8 @@ function HomeDashboard({ ctx }) {
     const num = (r.vantagepoint || "").trim();
     const rev = num && fcByNum[num] ? fcByNum[num] : 0;
     const stage = r.stage || "";
-    const due = parseTrackerDate(r.dueDates); if (due) items.push({ date: due, name: nm, kind: "Due", color: "var(--primary)", sheet: s.id, rowId: r._id, rev, stage, num });
-    const bp = parseTrackerDate(r.bidPermitDate); if (bp) items.push({ date: bp, name: nm, kind: "Bid / permit", color: "var(--teal)", sheet: s.id, rowId: r._id, rev, stage, num });
+    parseTrackerDates(r.dueDates).forEach(date => items.push({ date, name: nm, kind: "Due", color: "var(--primary)", sheet: s.id, rowId: r._id, rev, stage, num }));
+    parseTrackerDates(r.bidPermitDate).forEach(date => items.push({ date, name: nm, kind: "Bid / permit", color: "var(--teal)", sheet: s.id, rowId: r._id, rev, stage, num }));
   }));
   (events || []).forEach(e => { if (e.date) items.push({ date: e.date, name: e.title || "(event)", kind: "Event", color: e.color || "#9A6BF0", sheet: e.sheet, rowId: e.rowId, rev: 0, stage: "" }); });
 
@@ -3639,6 +3639,22 @@ function parseTrackerDate(s) {
   if (year < 100) year += 2000;
   return `${year}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
+// Parse EVERY date in a free-text field, so one cell can hold multiple dates (e.g. "2/4/2026, 3/15/2026")
+// and each one plots on the calendar / home.
+function parseTrackerDates(s) {
+  if (!s) return [];
+  const out = [], re = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g;
+  let m;
+  while ((m = re.exec(String(s)))) {
+    const mo = +m[1], d = +m[2];
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+    let year = m[3] ? +m[3] : new Date().getFullYear();
+    if (year < 100) year += 2000;
+    const iso = `${year}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (!out.includes(iso)) out.push(iso);
+  }
+  return out;
+}
 function CalendarView({ ctx }) {
   const gd = ctx.gantt;
   const gotoGantt = ctx.gotoGantt;
@@ -3697,8 +3713,8 @@ function CalendarView({ ctx }) {
   // Project due dates + bid/permit dates from the shared tracker (each gated by its category filter).
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
     const nm = r.projectName || r.name; if (!nm) return;
-    if (cats.due) add(parseTrackerDate(r.dueDates), { type: "due", label: nm, color: "var(--primary)", sheet: s.id, rowId: r._id });
-    if (cats.bid) add(parseTrackerDate(r.bidPermitDate), { type: "bid/permit", label: nm, color: "var(--teal)", sheet: s.id, rowId: r._id });
+    if (cats.due) parseTrackerDates(r.dueDates).forEach(d => add(d, { type: "due", label: nm, color: "var(--primary)", sheet: s.id, rowId: r._id }));
+    if (cats.bid) parseTrackerDates(r.bidPermitDate).forEach(d => add(d, { type: "bid/permit", label: nm, color: "var(--teal)", sheet: s.id, rowId: r._id }));
   }));
   // Legacy Gantt due dates, if any.
   if (cats.due) (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
