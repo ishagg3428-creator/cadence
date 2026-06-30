@@ -3200,14 +3200,25 @@ const TRACKER_COLS = [
   { key: "stamp", label: "Stamp", w: 110 },
   { key: "stage", label: "Stage", w: 170 },
 ];
-// Multi-line tracker cell that auto-grows to fully show its content (content height = minimum), still resizable taller.
+// Multi-line tracker cell. Shows its text in a plain wrapping <div> (browser wraps it natively, so
+// the row auto-fits the content with zero JS — fast even with hundreds of rows). Only becomes a
+// resizable, auto-growing <textarea> while you're actually editing it (one cell at a time, so no thrash).
 function MlCell({ value, onSave, idAttr }) {
+  const [editing, setEditing] = useState(false);
   const ref = useRef(null);
   const fit = () => { const el = ref.current; if (el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; } };
-  useEffect(() => { fit(); }, [value]);
-  return <textarea ref={ref} className="trk-ml" id={idAttr} defaultValue={value || ""} title={value} rows={1}
-    onInput={fit}
-    onBlur={e => { if (e.target.value !== (value ?? "")) onSave(e.target.value); }} />;
+  useEffect(() => { if (editing) fit(); }, [editing]);
+  if (editing) {
+    return <textarea ref={ref} className="trk-ml" id={idAttr} autoFocus defaultValue={value || ""} title={value} rows={1}
+      onInput={fit}
+      onBlur={e => { setEditing(false); if (e.target.value !== (value ?? "")) onSave(e.target.value); }} />;
+  }
+  const text = value == null ? "" : String(value);
+  return <div className="trk-ml-view" id={idAttr} title={text} tabIndex={0}
+    onClick={() => setEditing(true)}
+    onFocus={() => setEditing(true)}>
+    {text === "" ? <span style={{ color: "#b9c1cd" }}>—</span> : text}
+  </div>;
 }
 function TrackerView({ ctx }) {
   const { effLight, theme } = ctx;
@@ -3344,16 +3355,16 @@ function TrackerView({ ctx }) {
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
   const MULTILINE = ["dueDates", "bidPermitDate", "statusNotes", "bidPermitNote"]; // cells that render as multi-line text (e.g. one date per line)
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
-  const people = ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()];
+  const people = useMemo(() => ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()], [data]);
   const ql = q.trim().toLowerCase();
   // Normalize for brand matching: lowercase, strip punctuation/spaces (so "CULVER'S" matches the "Culvers" tab).
   const normName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  const rows = data.filter(r => {
+  const rows = useMemo(() => data.filter(r => {
     if (stage !== "all" && r.stage !== stage) return false;
     if (person !== "all" && !namesIn(r).includes(person)) return false;
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
-  });
+  }), [data, stage, person, ql]);
   const STATUS_PALETTE = ["#E03A3E", "#E8A53C", "#33B36B", "#4FA8E8", "#9A6BF0", "#E0734A", "#2E80C2", "#C56BD6"];
   const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
@@ -3551,6 +3562,8 @@ function TrackerView({ ctx }) {
 .trk-table input:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table textarea.trk-ml{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:5px 8px;outline:none;resize:vertical;line-height:1.45;min-height:28px;white-space:pre-wrap;overflow-wrap:anywhere;display:block;}
 .trk-table textarea.trk-ml:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
+.trk-table .trk-ml-view{box-sizing:border-box;width:100%;min-height:28px;padding:5px 8px;font-family:'Outfit';font-size:12.5px;color:var(--ink);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;cursor:text;outline:none;}
+.trk-table .trk-ml-view:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
 .trk-gut{cursor:grab;}
 .trk-role{padding:4px 8px;line-height:1.55;cursor:default;min-height:26px;}
