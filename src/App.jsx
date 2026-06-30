@@ -1314,6 +1314,14 @@ function ForecastView({ ctx }) {
   const cellGrid = { flexShrink: 0, display: "grid", gridTemplateColumns: `repeat(${M}, ${COLW}px)`, width: M * COLW };
   const colLbl = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 10.5, fontWeight: 700, letterSpacing: ".3px" };
   const colNum = { width: NCW, textAlign: "right", paddingRight: 8, fontSize: 11.5, fontWeight: 800 };
+  // Table styles — table-layout:fixed + a colgroup guarantee header/rows/footer columns align exactly.
+  const MW = 80;                                   // month column width
+  const tableW = 632 + M * MW;                     // name(230)+comp(86)+backlog(86)+lessETC(96)+expected(96)+del(38)
+  const headTh = { padding: "7px 8px", textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--muted)", whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 2, background: "var(--panel2)", borderBottom: "1px solid var(--line)" };
+  const numTh = { ...headTh, textAlign: "right", paddingRight: 8, borderLeft: "1px solid var(--line)" };
+  const footTd = { padding: "9px 8px", fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", position: "sticky", bottom: 0, zIndex: 2, background: "var(--panel2)", borderTop: "2px solid var(--line)" };
+  const numFoot = { ...footTd, textAlign: "right", paddingRight: 8, borderLeft: "1px solid var(--line)" };
+  const cellNum = { padding: "2px 6px", borderLeft: "1px solid var(--line)", borderBottom: "1px solid var(--line)" };
   return (
     <>
       <div className="head" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -1337,57 +1345,53 @@ function ForecastView({ ctx }) {
         <button className="btn btn-sm" onClick={() => ctx.setView("projections")} title="Open the projections table"><TrendingUp size={14} />Projections</button>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ maxHeight: "72vh", overflow: "auto" }}>
-          <div style={{ display: "flex", alignItems: "stretch", borderBottom: "1px solid var(--line)", background: "var(--panel2)", position: "sticky", top: 0, zIndex: 3 }}>
-            <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "8px 0 8px 12px", color: "var(--muted)" }}>
-              <div style={{ flex: 1, minWidth: 0, fontSize: 11.5, fontWeight: 700 }}>PROJECT</div>
-              <div style={colLbl}>COMP</div><div style={colLbl}>BACKLOG</div><div style={colLbl}>LESS ETC</div><div style={{ ...colLbl, color: "var(--teal)" }}>EXPECTED</div><div style={{ width: DELW }} />
-            </div>
-            <div style={cellGrid}>
-              {MONTHS.map((m, i) => (
-                <div key={i} style={{ padding: "4px 4px", textAlign: "center", borderLeft: "1px solid var(--line)" }}>
-                  <FcTextInput key={"hm" + i + "-" + rev} value={m} bold style={{ textAlign: "center" }} onCommit={v => setMonthLabel(i, v)} />
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-          {list.map(p => (
-            <div key={fcKey(p)} style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--line)" }}>
-              <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "4px 0 4px 12px" }}>
-                <div style={{ flex: 1, minWidth: 0, paddingRight: 6 }}>
-                  <FcTextInput key={fcKey(p) + "name-" + rev} value={p.name} bold onCommit={v => update(fcKey(p), x => ({ ...x, name: v }))} />
-                  <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingLeft: 4 }}>{p.number || "—"} · {p.pm || "—"}{p.studio ? " · " + p.studio : ""}</div>
-                </div>
-                <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "c-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></div>
-                <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "b-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></div>
-                <div style={{ width: NCW }}><FcNumInput key={fcKey(p) + "e-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></div>
-                <div style={{ width: NCW, textAlign: "right", paddingRight: 8, fontSize: 12, fontWeight: 800, color: p.total ? "var(--teal)" : "var(--muted)" }} title="Expected revenue (sum of months)">{fmt(p.total)}</div>
-                <button title="Delete project" onClick={() => { if (window.confirm("Delete this forecast project?")) removeProject(fcKey(p)); }} style={{ width: DELW, border: "none", background: "transparent", cursor: "pointer", color: "#c0392b", display: "grid", placeItems: "center" }}><Trash2 size={13} /></button>
-              </div>
-              <div style={{ ...cellGrid, position: "relative", height: 42 }}>
-                {p.first >= 0 && <div style={{ position: "absolute", top: 8, height: 26, left: `calc(${(p.first / M) * 100}% + 3px)`, width: `calc(${((p.last - p.first + 1) / M) * 100}% - 6px)`, background: "var(--teal)", opacity: 0.16, borderRadius: 6, pointerEvents: "none" }} />}
-                {MONTHS.map((mlabel, i) => (
-                  <div key={i} style={{ borderLeft: "1px solid var(--line)", position: "relative", display: "flex", alignItems: "center" }}>
-                    <FcNumInput key={fcKey(p) + "gm" + i + "-" + rev} value={p.months[i] || 0} onCommit={nv => update(fcKey(p), x => ({ ...x, months: MONTHS.map((_, ii) => ii === i ? nv : (x.months[ii] || 0)) }))} align="center" />
-                  </div>
+        <div style={{ overflow: "auto", maxHeight: "74vh" }}>
+          <table style={{ borderCollapse: "collapse", tableLayout: "fixed", width: tableW, background: "var(--panel)" }}>
+            <colgroup>
+              <col style={{ width: 230 }} />
+              <col style={{ width: 86 }} /><col style={{ width: 86 }} /><col style={{ width: 96 }} /><col style={{ width: 96 }} /><col style={{ width: 38 }} />
+              {MONTHS.map((m, i) => <col key={i} style={{ width: MW }} />)}
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={headTh}>PROJECT</th>
+                <th style={numTh}>COMP</th><th style={numTh}>BACKLOG</th><th style={numTh}>LESS ETC</th><th style={{ ...numTh, color: "var(--teal)" }}>EXPECTED</th><th style={numTh}></th>
+                {MONTHS.map((m, i) => (
+                  <th key={i} style={{ ...numTh, textAlign: "center", padding: "3px 2px" }}>
+                    <FcTextInput key={"hm" + i + "-" + rev} value={m} bold style={{ textAlign: "center" }} onCommit={v => setMonthLabel(i, v)} />
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "var(--muted)" }}>{fmt(colTotals[i])}</div>
+                  </th>
                 ))}
-              </div>
-            </div>
-          ))}
-          {list.length === 0 && <div style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</div>}
-          {/* Totals footer — live monthly + financial totals for the current filter. */}
-          <div style={{ display: "flex", alignItems: "stretch", borderTop: "2px solid var(--line)", background: "var(--panel2)", position: "sticky", bottom: 0, zIndex: 3 }}>
-            <div style={{ width: LW, minWidth: LW, display: "flex", alignItems: "center", padding: "8px 0 8px 12px" }}>
-              <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 800 }}>Totals · {list.length}</div>
-              <div style={colNum}>{fmt(tComp)}</div><div style={colNum}>{fmt(tBack)}</div><div style={colNum}>{fmt(tBlEtc)}</div><div style={{ ...colNum, color: "var(--teal)" }}>{fmt(grand)}</div><div style={{ width: DELW }} />
-            </div>
-            <div style={cellGrid}>
-              {MONTHS.map((m, i) => (
-                <div key={i} style={{ padding: "10px 6px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "var(--teal)", borderLeft: "1px solid var(--line)" }}>{fmt(colTotals[i])}</div>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(p => (
+                <tr key={fcKey(p)}>
+                  <td style={{ padding: "3px 8px", borderBottom: "1px solid var(--line)", overflow: "hidden" }}>
+                    <FcTextInput key={fcKey(p) + "name-" + rev} value={p.name} bold onCommit={v => update(fcKey(p), x => ({ ...x, name: v }))} />
+                    <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingLeft: 4 }}>{p.number || "—"} · {p.pm || "—"}{p.studio ? " · " + p.studio : ""}</div>
+                  </td>
+                  <td style={cellNum}><FcNumInput key={fcKey(p) + "c-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></td>
+                  <td style={cellNum}><FcNumInput key={fcKey(p) + "b-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></td>
+                  <td style={cellNum}><FcNumInput key={fcKey(p) + "e-" + rev} value={p.blEtc} onCommit={nv => update(fcKey(p), x => ({ ...x, blEtc: nv }))} /></td>
+                  <td style={{ ...cellNum, textAlign: "right", paddingRight: 8, fontWeight: 800, fontSize: 12, color: p.total ? "var(--teal)" : "var(--muted)" }}>{fmt(p.total)}</td>
+                  <td style={{ ...cellNum, textAlign: "center", padding: "2px" }}><button title="Delete project" onClick={() => { if (window.confirm("Delete this forecast project?")) removeProject(fcKey(p)); }} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#c0392b" }}><Trash2 size={13} /></button></td>
+                  {MONTHS.map((m, i) => {
+                    const active = p.first >= 0 && i >= p.first && i <= p.last;
+                    return <td key={i} style={{ padding: "2px 4px", borderLeft: "1px solid var(--line)", borderBottom: "1px solid var(--line)", background: active ? "rgba(45,176,160,0.16)" : "transparent" }}><FcNumInput key={fcKey(p) + "gm" + i + "-" + rev} value={p.months[i] || 0} onCommit={nv => update(fcKey(p), x => ({ ...x, months: MONTHS.map((_, ii) => ii === i ? nv : (x.months[ii] || 0)) }))} align="center" /></td>;
+                  })}
+                </tr>
               ))}
-            </div>
-          </div>
+              {list.length === 0 && <tr><td colSpan={6 + M} style={{ padding: 26, textAlign: "center", color: "var(--muted)" }}>No projects match these filters.</td></tr>}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={footTd}>Totals · {list.length}</td>
+                <td style={numFoot}>{fmt(tComp)}</td><td style={numFoot}>{fmt(tBack)}</td><td style={numFoot}>{fmt(tBlEtc)}</td><td style={{ ...numFoot, color: "var(--teal)" }}>{fmt(grand)}</td><td style={numFoot}></td>
+                {MONTHS.map((m, i) => <td key={i} style={{ ...numFoot, textAlign: "center", paddingRight: 4, color: "var(--teal)" }}>{fmt(colTotals[i])}</td>)}
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
     </>
