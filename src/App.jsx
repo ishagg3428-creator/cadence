@@ -3527,6 +3527,16 @@ function TrackerView({ ctx }) {
     u.set("subject", `[${row.projectName}] `);
     window.open(`https://outlook.office.com/mail/deeplink/compose?${u.toString()}`, "_blank");
   };
+  // Download the current sheet (visible columns + rows in the current sort/filter) as an .xlsx.
+  const exportXlsx = () => {
+    const header = visibleCols.map(c => c.label);
+    const aoa = [header, ...viewRows.map(r => visibleCols.map(c => { const v = r[c.key]; return v == null ? "" : String(v); }))];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = visibleCols.map(c => ({ wch: Math.max(10, Math.min(40, Math.round((c.w || 120) / 7))) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, String(activeLabel || "Tracker").replace(/[^\w ]/g, "").slice(0, 31) || "Tracker");
+    XLSX.writeFile(wb, `tracker-${String(activeLabel || "sheet").replace(/[^a-z0-9]+/gi, "-")}-${todayISO()}.xlsx`);
+  };
   const GUT = 46;
   const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
@@ -3634,6 +3644,7 @@ function TrackerView({ ctx }) {
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          <button className="btn btn-sm" onClick={exportXlsx} title="Download this sheet as Excel (current columns, filters & sort)" style={{ gap: 6 }}><Download size={14} />Export</button>
           <button className="btn btn-sm" onClick={openHistory} title="View & restore version snapshots" style={{ gap: 6 }}><Clock size={14} />History</button>
           {undoStack.length > 0 && (
             <button className="btn btn-sm" onClick={undoDelete} title={`Restore last deleted ${undoStack[undoStack.length - 1].type === "col" ? "column" : "row"}: ${undoStack[undoStack.length - 1].label || ""}`} style={{ gap: 6 }}>
@@ -3694,6 +3705,7 @@ function TrackerView({ ctx }) {
 .trk-table .trk-ml-view{box-sizing:border-box;width:100%;min-height:28px;padding:5px 8px;font-family:'Outfit';font-size:12.5px;color:var(--ink);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;cursor:text;outline:none;}
 .trk-table .trk-ml-view:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
+.trk-row{content-visibility:auto;contain-intrinsic-size:auto 40px;}
 .trk-gut{cursor:grab;}
 .trk-role{padding:4px 8px;line-height:1.55;cursor:default;min-height:26px;}
 .trk-role a{color:var(--teal);text-decoration:none;}
@@ -3727,7 +3739,7 @@ function TrackerView({ ctx }) {
                 const tint = selRow === r._id ? "rgba(79,168,232,0.13)" : null;
                 const gutTint = selRow === r._id ? "rgba(79,168,232,0.18)" : "var(--panel2)";
                 return (
-                <tr key={r._id || ri}
+                <tr key={r._id || ri} className="trk-row"
                   onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
@@ -3737,8 +3749,10 @@ function TrackerView({ ctx }) {
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     const isML = MULTILINE.includes(c.key);
+                    const badDates = (c.key === "dueDates" || c.key === "bidPermitDate") ? invalidDateTokens(r[c.key]) : [];
                     return (
-                    <td key={c.key} style={{ ...cell, width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: (isRole || isML) ? "top" : "middle", whiteSpace: (isRole || isML) ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
+                    <td key={c.key} style={{ ...cell, position: "relative", width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: (isRole || isML) ? "top" : "middle", whiteSpace: (isRole || isML) ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
+                      {badDates.length > 0 && <span title={"This won't show on the calendar — invalid date: " + badDates.join(", ") + ". Use M/D or M/D/YY (month 1–12, day 1–31)."} style={{ position: "absolute", top: 2, right: 2, zIndex: 2, fontSize: 11, lineHeight: 1, color: "#E8A53C", cursor: "help" }}>⚠</span>}
                       {isRole ? (
                         <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} />
                       ) : c.key === "stage" ? (
@@ -3845,6 +3859,13 @@ function parseTrackerDates(s) {
     const iso = `${year}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     if (!out.includes(iso)) out.push(iso);
   }
+  return out;
+}
+// Find date-looking tokens that are invalid (month>12 or day>31) — these silently miss the calendar.
+function invalidDateTokens(s) {
+  const out = [], re = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g;
+  let m;
+  while ((m = re.exec(String(s || "")))) { const mo = +m[1], d = +m[2]; if (mo < 1 || mo > 12 || d < 1 || d > 31) out.push(m[0]); }
   return out;
 }
 // Default buckets (editable) — events are grouped into buckets and take their bucket's color.
