@@ -3681,6 +3681,7 @@ function TrackerView({ ctx }) {
                   </div>
                 ))}
                 {teamCols.length === 0 && <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "4px 0" }}>No role columns on this sheet.</div>}
+                {teamCols.length > 0 && <div style={{ flexBasis: "100%", fontSize: 11.5, color: "var(--muted)", marginTop: 2 }}>Tip: put more than one person in a role by separating names with a slash — e.g. <b>GABE/BYSHOP</b> — or with new lines.</div>}
               </div>
             )}
           </div>
