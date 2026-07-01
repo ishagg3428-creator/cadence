@@ -3419,7 +3419,8 @@ function TrackerView({ ctx }) {
   // Brand sheets (Costco / ALDI / Culver's) have their own role columns (cv_/co_/al_). On these,
   // a new row autofills the standing team from an editable "Default team" panel at the top.
   const BRAND_RE = /^(cv_|co_|al_)/;
-  const sheetIsBrand = cols.some(c => BRAND_RE.test(c.key));
+  // Detect brand sheets by name/id (robust even if the DB stored columns differently) OR by their branded role columns.
+  const sheetIsBrand = /costco|aldi|culver/i.test(String(activeLabel) + " " + String(activeSheet)) || cols.some(c => BRAND_RE.test(c.key));
   const teamCols = cols.filter(c => ROLE_KEYS.includes(c.key)); // the people columns present in this sheet
   // Seed the panel from the most common value already used in each role column, so it starts pre-filled.
   const modeTeam = useMemo(() => {
@@ -3436,7 +3437,7 @@ function TrackerView({ ctx }) {
   const effectiveTeam = { ...modeTeam, ...(sheetObj.defaultTeam || {}) };
   const setDefaultTeam = (key, value) => patchSheet(s => ({ defaultTeam: { ...modeTeam, ...(s.defaultTeam || {}), [key]: value } }));
   const teamDefaults = () => { if (!sheetIsBrand) return {}; const row = {}; teamCols.forEach(c => { if (effectiveTeam[c.key]) row[c.key] = effectiveTeam[c.key]; }); return row; };
-  const [teamOpen, setTeamOpen] = useState(false);
+  const [teamOpen, setTeamOpen] = useState(true); // start expanded so it's easy to find
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = useMemo(() => ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()], [data]);
   const ql = q.trim().toLowerCase();
