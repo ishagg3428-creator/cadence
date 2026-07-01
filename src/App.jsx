@@ -1202,6 +1202,7 @@ function useForecast() {
   const [projects, setProjects] = useState(() => normProjects(FORECAST_PROJECTS));
   const [months, setMonths] = useState(padLabels(FORECAST_MONTHS)); // editable column labels (shared)
   const [rev, setRev] = useState(0); // bumps on remote changes so inputs refresh
+  const [status, setStatus] = useState("loading"); // "loading" | "live" | "offline" — gates the stale starter snapshot
   const ver = useRef(0);
   const saving = useRef(false);
   const loaded = useRef(false);
@@ -1228,7 +1229,8 @@ function useForecast() {
           const seeded = normProjects(FORECAST_PROJECTS);
           const res = await forecastSave({ projects: seeded, months: padLabels(FORECAST_MONTHS) }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
         }
-      } catch (e) {}
+        setStatus("live");
+      } catch (e) { if (!loaded.current) setStatus("offline"); }
     };
     pull();
     const t = setInterval(pull, 4000);
@@ -1251,11 +1253,11 @@ function useForecast() {
     })();
   };
   const update = (id, fn) => commit(projects.map(p => p._id === id ? fn(p) : p), months, (doc) => ({ projects: doc.projects.map(p => p._id === id ? fn(p) : p), months: doc.months }));
-  const addProject = (tmpl) => { const np = { _id: uid(), studio: "", pm: "", number: "", name: "New project", comp: 0, backlog: 0, blEtc: 0, months: [0, 0, 0, 0, 0, 0], ...(tmpl || {}) }; commit([np, ...projects], months, (doc) => ({ projects: [np, ...doc.projects], months: doc.months })); return np._id; };
+  const addProject = (tmpl) => { const np = { _id: uid(), studio: "", pm: "", number: "", name: "New project", comp: 0, backlog: 0, blEtc: 0, months: Array(NMONTHS).fill(0), ...(tmpl || {}) }; commit([np, ...projects], months, (doc) => ({ projects: [np, ...doc.projects], months: doc.months })); return np._id; };
   const removeProject = (id) => commit(projects.filter(p => p._id !== id), months, (doc) => ({ projects: doc.projects.filter(p => p._id !== id), months: doc.months }));
   const setMonthLabel = (idx, label) => commit(projects, months.map((m, i) => i === idx ? label : m), (doc) => ({ projects: doc.projects, months: doc.months.map((m, i) => i === idx ? label : m) }));
   const replaceAll = (newProjects) => commit(normProjects(newProjects), months, () => ({ projects: normProjects(newProjects), months: months })); // import: replace the whole project set
-  return { projects, months, rev, update, addProject, removeProject, setMonthLabel, replaceAll };
+  return { projects, months, rev, status, update, addProject, removeProject, setMonthLabel, replaceAll };
 }
 // Parse a typed currency/number string into a number (strips $ and commas).
 const parseNum = (s) => { const n = parseFloat(String(s).replace(/[^0-9.\-]/g, "")); return isNaN(n) ? 0 : Math.round(n); };
@@ -1280,7 +1282,7 @@ function FcTextInput({ value, onCommit, placeholder, bold, style }) {
 
 /* ---------------- Forecast Gantt (editable revenue bars + financial columns across months) ---------------- */
 function ForecastView({ ctx }) {
-  const { projects: FP, rev, update, addProject, removeProject, months: MONTHS, setMonthLabel, replaceAll } = useForecast();
+  const { projects: FP, rev, status, update, addProject, removeProject, months: MONTHS, setMonthLabel, replaceAll } = useForecast();
   const [pm, setPm] = useState("all");
   const [studio, setStudio] = useState("all");
   const [q, setQ] = useState("");
@@ -1296,6 +1298,14 @@ function ForecastView({ ctx }) {
       alert("Imported " + projs.length + " projects from the export.");
     } catch (e) { alert("Couldn't read that file: " + (e && e.message ? e.message : e)); }
   };
+  // Until the live copy loads, don't render the stale starter snapshot (its total differs from the
+  // synced value, which used to look like "clicking deleted a project").
+  if (status === "loading") return (
+    <>
+      <div className="head"><div><div className="h-title">Forecast</div><div className="h-sub">Editable revenue forecast · {FORECAST_RANGE}.</div></div></div>
+      <div className="panel" style={{ padding: 48, textAlign: "center", color: "var(--muted)", fontSize: 14 }}><RefreshCw size={16} style={{ verticalAlign: "-3px", marginRight: 8 }} />Loading the latest forecast from the shared database…</div>
+    </>
+  );
   const pms = [...new Set(FP.map(p => p.pm).filter(Boolean))].sort();
   const studios = [...new Set(FP.map(p => p.studio).filter(Boolean))].sort();
   const fmt = (n) => (n < 0 ? "-$" : "$") + Math.abs(Math.round(n || 0)).toLocaleString();
@@ -1344,6 +1354,7 @@ function ForecastView({ ctx }) {
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 11.5, color: "var(--muted)" }}>Total expected · {list.length} project{list.length === 1 ? "" : "s"}</div>
           <div style={{ fontSize: 22, fontWeight: 800, color: "var(--teal)" }}>{fmt(grand)}</div>
+          {status === "offline" && <div style={{ fontSize: 11, color: "#E8A53C", fontWeight: 600 }}>Starter data · not synced</div>}
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12, alignItems: "center" }}>
@@ -3405,6 +3416,27 @@ function TrackerView({ ctx }) {
   }, [ctx.trackerGoto]);
   const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
   const MULTILINE = ["dueDates", "bidPermitDate", "statusNotes", "bidPermitNote"]; // cells that render as multi-line text (e.g. one date per line)
+  // Brand sheets (Costco / ALDI / Culver's) have their own role columns (cv_/co_/al_). On these,
+  // a new row autofills the standing team from an editable "Default team" panel at the top.
+  const BRAND_RE = /^(cv_|co_|al_)/;
+  const sheetIsBrand = cols.some(c => BRAND_RE.test(c.key));
+  const teamCols = cols.filter(c => ROLE_KEYS.includes(c.key)); // the people columns present in this sheet
+  // Seed the panel from the most common value already used in each role column, so it starts pre-filled.
+  const modeTeam = useMemo(() => {
+    const out = {};
+    teamCols.forEach(c => {
+      const counts = {};
+      data.forEach(r => { const v = String(r[c.key] || "").trim(); if (v) counts[v] = (counts[v] || 0) + 1; });
+      let best = "", n = 0; for (const k in counts) if (counts[k] > n) { n = counts[k]; best = k; }
+      if (best) out[c.key] = best;
+    });
+    return out;
+  }, [data, activeSheet]);
+  // Stored overrides win over the seeded mode; a stored "" intentionally blanks a role.
+  const effectiveTeam = { ...modeTeam, ...(sheetObj.defaultTeam || {}) };
+  const setDefaultTeam = (key, value) => patchSheet(s => ({ defaultTeam: { ...modeTeam, ...(s.defaultTeam || {}), [key]: value } }));
+  const teamDefaults = () => { if (!sheetIsBrand) return {}; const row = {}; teamCols.forEach(c => { if (effectiveTeam[c.key]) row[c.key] = effectiveTeam[c.key]; }); return row; };
+  const [teamOpen, setTeamOpen] = useState(false);
   const namesIn = (r) => ROLE_KEYS.flatMap(k => String(r[k] || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase())));
   const people = useMemo(() => ["all", ...Array.from(new Set(data.flatMap(namesIn))).sort()], [data]);
   const ql = q.trim().toLowerCase();
@@ -3434,8 +3466,8 @@ function TrackerView({ ctx }) {
   const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
   const setStatus = (id, val) => { if (val === "__new") { const n = window.prompt("New status name:"); if (!n || !n.trim()) return; const nm = n.trim(); setStatuses(ss => ss.includes(nm) ? ss : [...ss, nm]); update(id, "stage", nm); return; } update(id, "stage", val); };
-  const addRow = () => setData(ds => [{ _id: "r" + uid() }, ...ds]);
-  const addRowBottom = () => setData(ds => [...ds, { _id: "r" + uid() }]);
+  const addRow = () => { const t = teamDefaults(); setData(ds => [{ _id: "r" + uid(), ...t }, ...ds]); };
+  const addRowBottom = () => { const t = teamDefaults(); setData(ds => [...ds, { _id: "r" + uid(), ...t }]); };
   const dupRow = (id) => { const i = data.findIndex(r => r._id === id); if (i < 0) return; const copy = { ...data[i], _id: "r" + uid() }; setData(ds => { const c = [...ds]; const j = c.findIndex(r => r._id === id); c.splice((j < 0 ? c.length : j) + 1, 0, copy); return c; }); };
   const delRow = (id) => { const i = data.findIndex(r => r._id === id); if (i < 0) return; const row = data[i]; setUndoStack(st => [...st, { type: "row", sheetId: activeSheet, item: row, index: i, label: row.projectName || "row" }].slice(-25)); setData(ds => ds.filter(r => r._id !== id)); };
   const undoDelete = () => {
@@ -3630,6 +3662,29 @@ function TrackerView({ ctx }) {
             )}
           </div>
         </div>
+        {sheetIsBrand && (
+          <div style={{ marginBottom: 10, border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel2)" }}>
+            <button onClick={() => setTeamOpen(o => !o)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, background: "transparent", border: "none", cursor: "pointer", padding: "9px 12px", color: "var(--ink)", fontSize: 13, fontWeight: 600, textAlign: "left" }}>
+              <Users size={15} style={{ color: "var(--muted)" }} />
+              Default team for {activeLabel} <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12 }}>— autofills the people on each new row</span>
+              <span style={{ flex: 1 }} />
+              {teamOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {teamOpen && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, padding: "2px 12px 12px" }}>
+                {teamCols.map(c => (
+                  <div key={c.key} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".4px" }}>{c.label}</label>
+                    <input key={activeSheet + c.key + remoteRev} defaultValue={effectiveTeam[c.key] || ""} placeholder="—"
+                      onBlur={e => { const v = e.target.value.trim(); if (v !== (effectiveTeam[c.key] || "")) setDefaultTeam(c.key, v); }}
+                      style={{ width: 150, boxSizing: "border-box", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 7, padding: "6px 8px", fontFamily: "Outfit", fontSize: 13, color: "var(--ink)", outline: "none" }} />
+                  </div>
+                ))}
+                {teamCols.length === 0 && <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "4px 0" }}>No role columns on this sheet.</div>}
+              </div>
+            )}
+          </div>
+        )}
         <style>{`.trk-table input{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:5px 8px;outline:none;}
 .trk-table input:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table textarea.trk-ml{width:100%;box-sizing:border-box;border:none;background:transparent;font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:5px 8px;outline:none;resize:vertical;line-height:1.45;min-height:28px;white-space:pre-wrap;overflow-wrap:anywhere;display:block;}
