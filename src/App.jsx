@@ -1384,7 +1384,13 @@ function ForecastView({ ctx }) {
                 <tr key={fcKey(p)}>
                   <td style={{ padding: "3px 8px", borderBottom: "1px solid var(--line)", overflow: "hidden" }}>
                     <FcTextInput key={fcKey(p) + "name-" + rev} value={p.name} bold onCommit={v => update(fcKey(p), x => ({ ...x, name: v }))} />
-                    <div style={{ fontSize: 10, color: "var(--muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingLeft: 4 }}>{p.number || "—"} · {p.pm || "—"}{p.studio ? " · " + p.studio : ""}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 2, paddingLeft: 2 }} title="Click to edit VP number · PM · studio">
+                      <FcTextInput key={fcKey(p) + "num-" + rev} value={p.number} placeholder="VP #" style={{ flex: "0 1 auto", minWidth: 30, color: "var(--muted)" }} onCommit={v => update(fcKey(p), x => ({ ...x, number: v }))} />
+                      <span style={{ fontSize: 10, color: "var(--dim)" }}>·</span>
+                      <FcTextInput key={fcKey(p) + "pm-" + rev} value={p.pm} placeholder="PM" style={{ flex: "1 1 auto", minWidth: 30, color: "var(--muted)" }} onCommit={v => update(fcKey(p), x => ({ ...x, pm: v }))} />
+                      <span style={{ fontSize: 10, color: "var(--dim)" }}>·</span>
+                      <FcTextInput key={fcKey(p) + "st-" + rev} value={p.studio} placeholder="studio" style={{ flex: "1 1 auto", minWidth: 30, color: "var(--muted)" }} onCommit={v => update(fcKey(p), x => ({ ...x, studio: v }))} />
+                    </div>
                   </td>
                   <td style={cellNum}><FcNumInput key={fcKey(p) + "c-" + rev} value={p.comp} onCommit={nv => update(fcKey(p), x => ({ ...x, comp: nv }))} /></td>
                   <td style={cellNum}><FcNumInput key={fcKey(p) + "b-" + rev} value={p.backlog} onCommit={nv => update(fcKey(p), x => ({ ...x, backlog: nv }))} /></td>
