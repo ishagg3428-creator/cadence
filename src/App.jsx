@@ -11,7 +11,7 @@ import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
 import * as XLSX from "xlsx";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, snapsLoad, snapsSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -3270,6 +3270,9 @@ function TrackerView({ ctx }) {
   const [syncState, setSyncState] = useState("saved"); // "saving" | "saved" | "merging" | "offline"
   const [undoStack, setUndoStack] = useState([]); // recent row/column deletions, for one-click restore
   const [remoteRev, setRemoteRev] = useState(0); // bumps only when data arrives from the DB, to refresh cell inputs without remounting on every local edit
+  const [histOpen, setHistOpen] = useState(false); // version-history panel
+  const [snaps, setSnaps] = useState(null);         // loaded on demand (null = loading)
+  const [sort, setSort] = useState(null);           // { key, dir:1|-1 } — display-only sort
   const baseDoc = useRef(null); // the doc as last confirmed on the server — the merge base for conflict resolution
   const buildDocFrom = (shs) => ({ sheets: (shs || []).map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
   const buildDoc = () => buildDocFrom(sheets);
@@ -3279,6 +3282,32 @@ function TrackerView({ ctx }) {
     if (doc.sheets && doc.sheets.length) return doc.sheets;
     if (doc.rows && doc.rows.length) { const com = { id: "com1", name: "COM-1", cols: (doc.cols || TRACKER_COLS).filter(c => c.key !== "rowNumber"), statuses: doc.statuses || [], rows: doc.rows }; return [com, ...SEED_SHEETS.filter(s => s.id !== "com1")]; }
     return null;
+  };
+  // Version snapshots (doc id=4). Snapshots are written at most once per ~12h per browser and read
+  // only when the History panel opens, so they add almost nothing to data transfer.
+  const SNAP_KEY = "cadence:lastSnap";
+  const writeSnapshot = async (doc) => {
+    const cur = await snapsLoad().catch(() => null);
+    const list = (cur && cur.snaps) || [];
+    const next = [...list, { id: "snap_" + uid(), ts: Date.now(), doc }].slice(-15); // keep the 15 most recent
+    const res = await snapsSave({ snaps: next }, cur ? cur.v : 0);
+    try { localStorage.setItem(SNAP_KEY, String(Date.now())); } catch (e) {}
+    return (res && res.conflict) ? ((res.doc && res.doc.snaps) || next) : next;
+  };
+  const maybeSnapshot = async (doc) => {
+    if (!apiOk.current) return;
+    let last = 0; try { last = Number(localStorage.getItem(SNAP_KEY) || 0); } catch (e) {}
+    if (Date.now() - last < 12 * 3600 * 1000) return;
+    try { localStorage.setItem(SNAP_KEY, String(Date.now())); } catch (e) {} // set first so a failure doesn't cause retries
+    try { await writeSnapshot(doc); } catch (e) {}
+  };
+  const openHistory = async () => { setHistOpen(true); setSnaps(null); try { const d = await snapsLoad(); setSnaps((d && d.snaps) || []); } catch (e) { setSnaps([]); } };
+  const snapshotNow = async () => { try { const next = await writeSnapshot(buildDoc()); if (next) setSnaps(next); } catch (e) {} };
+  const restoreSnap = async (snap) => {
+    if (!snap || !snap.doc || !snap.doc.sheets) return;
+    if (!window.confirm("Restore this snapshot? The current tracker will be replaced with this saved version. (Your current data is snapshotted first, so you can undo by restoring a newer one.)")) return;
+    try { await writeSnapshot(buildDoc()); } catch (e) {}
+    setSheets(withIds(snap.doc.sheets)); setRemoteRev(n => n + 1); setHistOpen(false);
   };
   // Load all sheets from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
@@ -3299,6 +3328,7 @@ function TrackerView({ ctx }) {
       } catch (e) { apiOk.current = false; setSyncState("offline"); }
       hydrated.current = true;
       if (cancelled) return;
+      maybeSnapshot(baseDoc.current); // fire-and-forget daily backup (gated so it runs at most ~once/12h)
       timer = setInterval(pull, 2000); // poll every 2s (cheap version check; full doc only on change)
     })();
     const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
@@ -3380,6 +3410,20 @@ function TrackerView({ ctx }) {
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
   }), [data, stage, person, ql]);
+  // Display-only sort (doesn't change the stored/reorderable order). Dates sort chronologically; stage by its palette order; else text.
+  const DATE_SORT_KEYS = ["dueDates", "bidPermitDate"];
+  const sortComparable = (r, key) => {
+    if (DATE_SORT_KEYS.includes(key)) { const ds = parseTrackerDates(r[key]); return ds.length ? ds.slice().sort()[0] : "9999-99-99"; }
+    if (key === "stage") { const i = statuses.indexOf(r.stage); return i < 0 ? "zzz" : String(i).padStart(3, "0"); }
+    const v = r[key]; return (v == null || v === "") ? "￿" : String(v).toLowerCase();
+  };
+  const viewRows = useMemo(() => {
+    if (!sort) return rows;
+    const arr = rows.slice();
+    arr.sort((a, b) => { const av = sortComparable(a, sort.key), bv = sortComparable(b, sort.key); return av < bv ? -sort.dir : av > bv ? sort.dir : 0; });
+    return arr;
+  }, [rows, sort, statuses]);
+  const cycleSort = (key) => setSort(s => (!s || s.key !== key) ? { key, dir: 1 } : s.dir === 1 ? { key, dir: -1 } : null);
   const STATUS_PALETTE = ["#E03A3E", "#E8A53C", "#33B36B", "#4FA8E8", "#9A6BF0", "#E0734A", "#2E80C2", "#C56BD6"];
   const statusColor = (s) => { const i = statuses.indexOf(s); return i >= 0 ? STATUS_PALETTE[i % STATUS_PALETTE.length] : "#7686A0"; };
   const update = (id, key, value) => setData(ds => ds.map(r => r._id === id ? { ...r, [key]: value } : r));
@@ -3542,9 +3586,16 @@ function TrackerView({ ctx }) {
             )}
           </div>
           <span style={{ fontSize: 12.5, color: "var(--muted)" }}>{rows.length} of {data.length} projects</span>
+          {sort && (
+            <button className="btn btn-sm" onClick={() => setSort(null)} title="Clear sort"
+              style={{ gap: 5, borderColor: "var(--teal)", color: "var(--teal)" }}>
+              Sorted: {(visibleCols.find(c => c.key === sort.key) || {}).label || sort.key} {sort.dir === 1 ? "▲" : "▼"} <X size={12} />
+            </button>
+          )}
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          <button className="btn btn-sm" onClick={openHistory} title="View & restore version snapshots" style={{ gap: 6 }}><Clock size={14} />History</button>
           {undoStack.length > 0 && (
             <button className="btn btn-sm" onClick={undoDelete} title={`Restore last deleted ${undoStack[undoStack.length - 1].type === "col" ? "column" : "row"}: ${undoStack[undoStack.length - 1].label || ""}`} style={{ gap: 6 }}>
               <RotateCcw size={14} />Undo delete
@@ -3593,7 +3644,9 @@ function TrackerView({ ctx }) {
                 {visibleCols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{c.label}</span>
+                      <span onClick={() => cycleSort(c.key)} title="Click to sort by this column" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", cursor: "pointer", userSelect: "none" }}>
+                        {c.label}{sort && sort.key === c.key ? (sort.dir === 1 ? " ▲" : " ▼") : ""}
+                      </span>
                       <button title="Move left" onClick={() => moveCol(c.key, -1)} disabled={ci === 0} style={colBtn}>‹</button>
                       <button title="Move right" onClick={() => moveCol(c.key, 1)} disabled={ci === visibleCols.length - 1} style={colBtn}>›</button>
                       <button title="Delete column" onClick={() => delCol(c.key)} style={{ ...colBtn, color: "#c0392b", fontSize: 12 }}>×</button>
@@ -3606,7 +3659,7 @@ function TrackerView({ ctx }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, ri) => {
+              {viewRows.map((r, ri) => {
                 const em = rowEmails(r);
                 const tint = selRow === r._id ? "rgba(79,168,232,0.13)" : null;
                 const gutTint = selRow === r._id ? "rgba(79,168,232,0.18)" : "var(--panel2)";
@@ -3615,8 +3668,8 @@ function TrackerView({ ctx }) {
                   onDragOver={e => { if (dragId) { e.preventDefault(); if (overId !== r._id) setOverId(r._id); } }}
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
-                  <td className="trk-gut" draggable onDragStart={() => setDragId(r._id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
-                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title="Click to highlight this row · drag to reorder"
+                  <td className={sort ? "" : "trk-gut"} draggable={!sort} onDragStart={() => { if (!sort) setDragId(r._id); }} onDragEnd={() => { setDragId(null); setOverId(null); }}
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title={sort ? "Clear the sort to drag-reorder rows" : "Click to highlight this row · drag to reorder"}
                     style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
@@ -3636,7 +3689,7 @@ function TrackerView({ ctx }) {
                         <MlCell key={r._id + "-" + c.key + "-" + remoteRev} value={r[c.key]} onSave={v => update(r._id, c.key, v)} idAttr={"cell-" + r._id + "-" + c.key} />
                       ) : (
                         <input key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
-                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = rows.findIndex(x => x._id === r._id); const next = rows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
+                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = viewRows.findIndex(x => x._id === r._id); const next = viewRows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
                     </td>
@@ -3665,8 +3718,41 @@ function TrackerView({ ctx }) {
             </tbody>
           </table>
         </div>
-        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Names link to email (click to send); double-click a role cell to edit (one name per line) · drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown.</div>
+        <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Names link to email (click to send); double-click a role cell to edit (one name per line) · drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown · click a column header to sort.</div>
       </div>
+
+      {histOpen && (
+        <div className="ov" onClick={() => setHistOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-h"><h2>Version history</h2><button className="btn btn-ghost icon-btn" onClick={() => setHistOpen(false)}><X size={18} /></button></div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Automatic backups of the whole tracker (every sheet). One is saved about once a day; the 15 most recent are kept. Restoring replaces the current data — and snapshots it first, so you can always undo by restoring a newer one.</div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+              <button className="btn btn-sm" onClick={snapshotNow} disabled={!apiOk.current} title={apiOk.current ? "Save a snapshot right now" : "Unavailable while offline"} style={{ gap: 6 }}><Plus size={13} />Snapshot now</button>
+            </div>
+            {snaps === null && <div style={{ fontSize: 13, color: "var(--muted)", padding: "10px 0" }}>Loading…</div>}
+            {snaps && snaps.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", padding: "10px 0" }}>No snapshots yet — one saves automatically, or use “Snapshot now”.</div>}
+            {snaps && snaps.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 360, overflowY: "auto" }}>
+                {snaps.slice().reverse().map(sn => {
+                  const shs = (sn.doc && sn.doc.sheets) || [];
+                  const nrows = shs.reduce((a, s) => a + ((s.rows && s.rows.length) || 0), 0);
+                  const when = new Date(sn.ts).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+                  return (
+                    <div key={sn.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel)" }}>
+                      <Clock size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{when}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{shs.length} sheet{shs.length === 1 ? "" : "s"} · {nrows} rows</div>
+                      </div>
+                      <button className="btn btn-sm" onClick={() => restoreSnap(sn)} style={{ gap: 5 }}><RotateCcw size={13} />Restore</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

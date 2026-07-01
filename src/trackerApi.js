@@ -62,6 +62,22 @@ export async function calSave(doc, baseV) {
   return r.json();
 }
 
+// Version snapshots of the tracker (document id=4) — periodic backups for one-click rollback.
+// Read only when the History panel is opened (not on every load), so it costs almost no data transfer.
+export async function snapsLoad() {
+  const r = await fetch("/api/tracker?id=4", { cache: "no-store", headers: authHeaders() });
+  if (!r.ok) throw new Error("snaps load failed");
+  return r.json();
+}
+export async function snapsSave(doc, baseV) {
+  const headers = authHeaders({ "Content-Type": "application/json" });
+  if (baseV != null) headers["x-base-v"] = String(baseV);
+  const r = await fetch("/api/tracker?id=4", { method: "POST", headers, body: JSON.stringify(doc) });
+  if (r.status === 409) { const j = await r.json(); return { conflict: true, doc: j.doc, v: j.v }; }
+  if (!r.ok) throw new Error("snaps save failed");
+  return r.json();
+}
+
 // Shared, editable revenue forecast (document id=3) — separate from the tracker + calendar.
 export async function forecastLoad() {
   const r = await fetch("/api/tracker?id=3", { cache: "no-store", headers: authHeaders() });
