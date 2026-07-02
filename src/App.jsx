@@ -11,7 +11,7 @@ import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
 import * as XLSX from "xlsx";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, apiPoll, snapsLoad, snapsSave, namesLoad, namesSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, apiPoll, snapsLoad, snapsSave, namesLoad, namesSave, todoLoad, todoSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -364,7 +364,7 @@ const NAV = [
   { id: "home", label: "Home", Icon: LayoutDashboard },
   { id: "tracker", label: "Tracker", Icon: Table },
   { id: "gantt", label: "Gantt", Icon: GanttChartSquare },
-  { id: "alerts", label: "Inbox", Icon: Bell },
+  { id: "todo", label: "To-do", Icon: CheckCircle2 },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
   // { id: "team", label: "Team", Icon: Users }, // Team tab hidden — re-enable this line (and the route below) to bring it back.
 ];
@@ -679,7 +679,6 @@ export default function App() {
           {NAV.map(n => (
             <button key={n.id} className={`tab ${view === n.id ? "on" : ""}`} onClick={() => setView(n.id)} style={{ position: "relative" }}>
               <n.Icon size={15} />{n.label}
-              {n.id === "alerts" && unreadCount > 0 && <span style={{ position: "absolute", top: -4, right: -4, minWidth: 16, height: 16, padding: "0 4px", borderRadius: 99, background: "var(--primary)", color: "#fff", fontSize: 10, fontWeight: 800, display: "grid", placeItems: "center", border: "2px solid var(--panel)" }}>{unreadCount}</span>}
             </button>
           ))}
         </div>
@@ -694,7 +693,7 @@ export default function App() {
         {view === "tracker" && <TrackerView ctx={ctx} />}
         {view === "gantt" && <ForecastView ctx={ctx} />}
         {view === "projections" && <ProjectionsView ctx={ctx} />}
-        {view === "alerts" && <NotificationsView ctx={ctx} />}
+        {view === "todo" && <TodoView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
         {/* {view === "team" && <TeamView ctx={ctx} />} */}{/* Team tab hidden — re-enable with the NAV entry above. */}
       </div>
@@ -4171,6 +4170,97 @@ function layoutWeek(items, weekDates) {
   });
   return segs;
 }
+/* ---------------- To-do (all due dates as a checklist, synced done-state) ---------------- */
+function TodoView({ ctx }) {
+  const gd = ctx.gantt;
+  const gComplete = (g) => g.members.length > 0 && g.members.every(m => m.done);
+  const [tsheets, setTsheets] = useState(() => { try { const v = localStorage.getItem(SHEETS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } });
+  const [events, setEvents] = useState([]);
+  const [done, setDone] = useState({});          // done-key -> timestamp (shared)
+  const doneV = useRef(0);
+  const [showDone, setShowDone] = useState(false);
+  const [cats, setCats] = useState({ due: true, bid: true, event: true });
+  useEffect(() => {
+    let on = true;
+    (async () => {
+      try { const d = await apiLoad(); if (on && d && d.sheets) setTsheets(d.sheets); } catch (e) {}
+      try { const c = await calLoad(); if (on && c && c.events) setEvents(c.events); } catch (e) {}
+      try { const t = await todoLoad(); if (on && t && t.done) { setDone(t.done); doneV.current = t.v || 0; } } catch (e) {}
+    })();
+    return () => { on = false; };
+  }, []);
+  // Set a key on/off; merges with the server copy on conflict so teammates' checks aren't lost.
+  const setDoneKey = async (key, isOn) => {
+    const next = { ...done }; if (isOn) next[key] = Date.now(); else delete next[key];
+    setDone(next);
+    try {
+      const res = await todoSave({ done: next }, doneV.current);
+      if (res && res.conflict) { const server = { ...((res.doc && res.doc.done) || {}) }; if (isOn) server[key] = Date.now(); else delete server[key]; setDone(server); const r2 = await todoSave({ done: server }, res.v); if (r2 && r2.v) doneV.current = r2.v; }
+      else if (res && res.v) doneV.current = res.v;
+    } catch (e) {}
+  };
+  const today = todayISO();
+  const weekCut = isoOf(addDaysIso(new Date(today + "T00:00:00"), 7));
+  const items = [];
+  (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
+    const nm = r.projectName || r.name; if (!nm) return;
+    if (cats.due) parseTrackerDates(r.dueDates).forEach(d => items.push({ key: "due|" + s.id + "|" + r._id + "|" + d, date: d, title: nm, type: "Due date", color: "var(--primary)", nav: () => ctx.gotoTrackerRow(s.id, r._id) }));
+    if (cats.bid) parseTrackerDates(r.bidPermitDate).forEach(d => items.push({ key: "bid|" + s.id + "|" + r._id + "|" + d, date: d, title: nm, type: "Bid/permit", color: "var(--teal)", nav: () => ctx.gotoTrackerRow(s.id, r._id) }));
+  }));
+  (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
+    if (p.due) items.push({ key: "gp|" + p.id, date: p.due, title: p.name, type: "Project", color: "var(--primary)", nav: () => ctx.gotoGantt && ctx.gotoGantt(p.id) });
+    (p.groups || []).forEach(g => { if (g.end) items.push({ key: "gg|" + g.id, date: g.end, title: g.name, type: "Task", color: "var(--teal)", nav: () => ctx.gotoGantt && ctx.gotoGantt(p.id) }); });
+  });
+  if (cats.event) (events || []).forEach(e => { const d = e.start || e.date; if (d) items.push({ key: "event|" + e.id, date: d, title: e.title || "(untitled)", type: "Event", color: e.color || "#9A6BF0", nav: () => ctx.setView("calendar") }); });
+  const pending = items.filter(i => !done[i.key]).sort((a, b) => a.date.localeCompare(b.date));
+  const completed = items.filter(i => done[i.key]).sort((a, b) => b.date.localeCompare(a.date));
+  const bucketOf = (d) => d < today ? "Overdue" : d <= weekCut ? "This week" : "Later";
+  const groups = ["Overdue", "This week", "Later"].map(b => ({ b, rows: pending.filter(i => bucketOf(i.date) === b) })).filter(g => g.rows.length);
+  const fmtD = (d) => new Date(d + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const Row = ({ i, isDone }) => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>
+      <input type="checkbox" checked={!!isDone} onChange={e => setDoneKey(i.key, e.target.checked)} style={{ width: 16, height: 16, accentColor: "var(--teal)", cursor: "pointer", flexShrink: 0 }} />
+      <span style={{ width: 118, flexShrink: 0, fontSize: 12, fontWeight: 700, color: !isDone && i.date < today ? "#E03A3E" : "var(--muted)" }}>{fmtD(i.date)}</span>
+      <span onClick={i.nav} title="Open" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: "pointer", fontSize: 13.5, color: isDone ? "var(--muted)" : "var(--ink)", textDecoration: isDone ? "line-through" : "none" }}>{i.title}</span>
+      <span style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 11, color: "var(--dim)" }}><span style={{ width: 8, height: 8, borderRadius: 99, background: i.color }} />{i.type}</span>
+    </div>
+  );
+  return (
+    <>
+      <div className="head">
+        <div><div className="h-title">To-do</div><div className="h-sub">Every due date from the tracker & calendar. Check items off as they're completed — it saves for the whole team.</div></div>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {[["due", "var(--primary)", "Due dates"], ["bid", "var(--teal)", "Bid/permit"], ["event", "#9A6BF0", "Events"]].map(([k, col, label]) => (
+            <button key={k} onClick={() => setCats(c => ({ ...c, [k]: !c[k] }))} style={{ display: "flex", alignItems: "center", gap: 5, border: "1px solid var(--line)", background: cats[k] ? "var(--panel2)" : "transparent", color: cats[k] ? "var(--ink)" : "var(--dim)", borderRadius: 99, padding: "3px 9px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, opacity: cats[k] ? 1 : 0.55 }}>
+              <span style={{ width: 9, height: 9, borderRadius: 99, background: col }} />{label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 14, fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>
+        <span><b style={{ color: "var(--ink)" }}>{pending.length}</b> open</span>
+        <span><b style={{ color: "var(--ink)" }}>{completed.length}</b> done</span>
+        {groups.find(g => g.b === "Overdue") && <span style={{ color: "#E03A3E", fontWeight: 700 }}>{groups.find(g => g.b === "Overdue").rows.length} overdue</span>}
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        {groups.length === 0 && <div style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>Nothing open. 🎉</div>}
+        {groups.map(g => (
+          <div key={g.b}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: g.b === "Overdue" ? "#E03A3E" : "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", padding: "9px 12px 4px", background: "var(--panel2)" }}>{g.b} · {g.rows.length}</div>
+            {g.rows.map(i => <Row key={i.key} i={i} isDone={false} />)}
+          </div>
+        ))}
+      </div>
+      {completed.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <button className="btn btn-sm" onClick={() => setShowDone(v => !v)} style={{ gap: 6 }}>{showDone ? <ChevronUp size={14} /> : <ChevronDown size={14} />}Completed ({completed.length})</button>
+          {showDone && <div className="panel" style={{ padding: 0, overflow: "hidden", marginTop: 8 }}>{completed.map(i => <Row key={i.key} i={i} isDone={true} />)}</div>}
+        </div>
+      )}
+    </>
+  );
+}
+
 function CalendarView({ ctx }) {
   const gd = ctx.gantt;
   const gotoGantt = ctx.gotoGantt;
@@ -4187,6 +4277,8 @@ function CalendarView({ ctx }) {
   const [evEdit, setEvEdit] = useState(null);   // event object being added/edited (null = closed)
   const [bkMgr, setBkMgr] = useState(false);     // bucket-manager modal open
   const [events, setEvents] = useState([]);      // shared custom calendar events (DB doc id=2)
+  const [todoDone, setTodoDone] = useState({});  // items checked off in the To-do view (doc id=6) — shown struck through here
+  useEffect(() => { let on = true; (async () => { try { const t = await todoLoad(); if (on && t && t.done) setTodoDone(t.done); } catch (e) {} })(); return () => { on = false; }; }, []);
   const [buckets, setBuckets] = useState(SEED_BUCKETS);
   const [cats, setCats] = useState({ due: true, bid: true }); // tracker-derived date filters
   const [hiddenBk, setHiddenBk] = useState({});  // bucket ids (or "none") that are filtered out
@@ -4287,8 +4379,8 @@ function CalendarView({ ctx }) {
   const items = [];
   (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
     const nm = r.projectName || r.name; if (!nm) return;
-    if (cats.due) parseTrackerDates(r.dueDates).forEach(d => items.push({ key: "due-" + s.id + r._id + d, start: d, end: d, title: nm, color: "var(--primary)", type: "due", sheet: s.id, rowId: r._id }));
-    if (cats.bid) parseTrackerDates(r.bidPermitDate).forEach(d => items.push({ key: "bid-" + s.id + r._id + d, start: d, end: d, title: nm, color: "var(--teal)", type: "bid/permit", sheet: s.id, rowId: r._id }));
+    if (cats.due) parseTrackerDates(r.dueDates).forEach(d => items.push({ key: "due-" + s.id + r._id + d, start: d, end: d, title: nm, color: "var(--primary)", type: "due", sheet: s.id, rowId: r._id, done: !!todoDone["due|" + s.id + "|" + r._id + "|" + d] }));
+    if (cats.bid) parseTrackerDates(r.bidPermitDate).forEach(d => items.push({ key: "bid-" + s.id + r._id + d, start: d, end: d, title: nm, color: "var(--teal)", type: "bid/permit", sheet: s.id, rowId: r._id, done: !!todoDone["bid|" + s.id + "|" + r._id + "|" + d] }));
   }));
   if (cats.due) (gd && gd.projects ? gd.projects.filter(p => !p.deleted) : []).forEach(p => {
     if (p.due) items.push({ key: "gp-" + p.id, start: p.due, end: p.due, title: p.name, color: "var(--primary)", type: "project", pid: p.id, done: !!p.done });
@@ -4300,7 +4392,7 @@ function CalendarView({ ctx }) {
     const bk = bucketById(e.bucket);
     const start = e.start || e.date, end = e.end || start;
     if (!start) return;
-    items.push({ key: e.id, id: e.id, start, end: end < start ? start : end, title: e.title || "(untitled)", color: bk ? bk.color : (e.color || "#9A6BF0"), type: "event", custom: true, sheet: e.sheet, rowId: e.rowId, bucket: e.bucket });
+    items.push({ key: e.id, id: e.id, start, end: end < start ? start : end, title: e.title || "(untitled)", color: bk ? bk.color : (e.color || "#9A6BF0"), type: "event", custom: true, sheet: e.sheet, rowId: e.rowId, bucket: e.bucket, done: !!todoDone["event|" + e.id] });
   });
 
   const SIZE = { S: 10.5, M: 12.5, L: 15 };

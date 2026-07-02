@@ -70,6 +70,21 @@ export async function calSave(doc, baseV) {
   return r.json();
 }
 
+// To-do completion state (document id=6) — which due dates have been checked off, team-shared.
+export async function todoLoad() {
+  const r = await fetch("/api/tracker?id=6", { cache: "no-store", headers: authHeaders() });
+  if (!r.ok) throw new Error("todo load failed");
+  return r.json();
+}
+export async function todoSave(doc, baseV) {
+  const headers = authHeaders({ "Content-Type": "application/json" });
+  if (baseV != null) headers["x-base-v"] = String(baseV);
+  const r = await fetch("/api/tracker?id=6", { method: "POST", headers, body: JSON.stringify(doc) });
+  if (r.status === 409) { const j = await r.json(); return { conflict: true, doc: j.doc, v: j.v }; }
+  if (!r.ok) throw new Error("todo save failed");
+  return r.json();
+}
+
 // Custom name directory (document id=5) — extra names shown in the role-cell autocomplete, team-shared.
 export async function namesLoad() {
   const r = await fetch("/api/tracker?id=5", { cache: "no-store", headers: authHeaders() });
