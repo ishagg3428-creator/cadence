@@ -3838,7 +3838,7 @@ function TrackerView({ ctx }) {
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
             <thead>
               <tr>
-                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}></th>
+                <th style={{ ...headc, width: GUT, minWidth: GUT, background: "var(--raise)" }}></th>
                 {visibleCols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
@@ -3868,7 +3868,7 @@ function TrackerView({ ctx }) {
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className={sort ? "" : "trk-gut"} draggable={!sort} onDragStart={() => { if (!sort) setDragId(r._id); }} onDragEnd={() => { setDragId(null); setOverId(null); }}
                     onClick={() => setSelRow(id => id === r._id ? null : r._id)} title={sort ? "Clear the sort to drag-reorder rows" : "Click to highlight this row · drag to reorder"}
-                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
+                    style={{ ...cell, width: GUT, minWidth: GUT, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     const isML = MULTILINE.includes(c.key);
