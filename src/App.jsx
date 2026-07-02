@@ -1477,7 +1477,7 @@ function ForecastView({ ctx }) {
             </colgroup>
             <thead>
               <tr>
-                <th style={headTh}>PROJECT</th>
+                <th style={{ ...headTh, left: 0, zIndex: 3 }}>PROJECT</th>
                 <th style={numTh}>COMP</th><th style={numTh}>BACKLOG</th><th style={numTh}>LESS ETC</th><th style={{ ...numTh, color: "var(--teal)" }}>EXPECTED</th><th style={numTh}></th>
                 {MONTHS.map((m, i) => (
                   <th key={i} style={{ ...numTh, textAlign: "center", padding: "3px 2px" }}>
@@ -1490,7 +1490,7 @@ function ForecastView({ ctx }) {
             <tbody>
               {list.map(p => (
                 <tr key={fcKey(p)}>
-                  <td style={{ padding: "3px 8px", borderBottom: "1px solid var(--line)", overflow: "hidden" }}>
+                  <td style={{ padding: "3px 8px", borderBottom: "1px solid var(--line)", overflow: "hidden", position: "sticky", left: 0, zIndex: 1, background: "var(--panel)" }}>
                     <FcTextInput key={fcKey(p) + "name-" + rev} value={p.name} bold onCommit={v => update(fcKey(p), x => ({ ...x, name: v }))} />
                     <div style={{ display: "flex", alignItems: "center", gap: 2, paddingLeft: 2 }} title="Click to edit VP number · PM · studio">
                       <FcTextInput key={fcKey(p) + "num-" + rev} value={p.number} placeholder="VP #" style={{ flex: "0 1 auto", minWidth: 30, color: "var(--muted)" }} onCommit={v => update(fcKey(p), x => ({ ...x, number: v }))} />
@@ -1515,7 +1515,7 @@ function ForecastView({ ctx }) {
             </tbody>
             <tfoot>
               <tr>
-                <td style={footTd}>Totals · {list.length}</td>
+                <td style={{ ...footTd, left: 0, zIndex: 3 }}>Totals · {list.length}</td>
                 <td style={numFoot}>{fmt(tComp)}</td><td style={numFoot}>{fmt(tBack)}</td><td style={numFoot}>{fmt(tBlEtc)}</td><td style={{ ...numFoot, color: "var(--teal)" }}>{fmt(grand)}</td><td style={numFoot}></td>
                 {MONTHS.map((m, i) => <td key={i} style={{ ...numFoot, textAlign: "center", paddingRight: 4, color: "var(--teal)" }}>{fmt(colTotals[i])}</td>)}
               </tr>
@@ -4154,6 +4154,8 @@ function CalendarView({ ctx }) {
   const [tsheets, setTsheets] = useState(() => { try { const v = localStorage.getItem(SHEETS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } });
   useEffect(() => { let on = true; (async () => { try { const doc = await apiLoad(); if (on && doc && doc.sheets) setTsheets(doc.sheets); } catch (e) {} })(); return () => { on = false; }; }, []);
   const [cur, setCur] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [mode, setMode] = useState("month"); // "month" | "week"
+  const [weekAnchor, setWeekAnchor] = useState(() => todayISO());
   const [notes, setNotes] = useState(loadCalNotes);
   useEffect(() => { saveCalNotes(notes); }, [notes]);
   const [dayOpen, setDayOpen] = useState(null);
@@ -4239,6 +4241,17 @@ function CalendarView({ ctx }) {
     for (let i = 0; i < 7; i++) { const dt = addDaysIso(gridStart, w * 7 + i); const iso = isoOf(dt); wk.push({ iso, day: dt.getDate(), inMonth: dt.getMonth() === cur.m, isToday: iso === today }); }
     weeks.push(wk);
   }
+  // Week view: the single Sun–Sat week containing the anchor date.
+  const isWeek = mode === "week";
+  const anchorD = new Date(weekAnchor + "T00:00:00");
+  const wkStart = addDaysIso(anchorD, -anchorD.getDay());
+  const weekCells = Array.from({ length: 7 }, (_, i) => { const dt = addDaysIso(wkStart, i); const iso = isoOf(dt); return { iso, day: dt.getDate(), inMonth: dt.getMonth() === anchorD.getMonth(), isToday: iso === today }; });
+  const displayWeeks = isWeek ? [weekCells] : weeks;
+  const laneCap = isWeek ? 99 : LANES;
+  const weekLabel = () => { const a = new Date(wkStart), b = addDaysIso(wkStart, 6); const o = { month: "short", day: "numeric" }; return a.toLocaleDateString(undefined, o) + " – " + b.toLocaleDateString(undefined, { ...o, year: "numeric" }); };
+  const goPrev = () => { if (isWeek) setWeekAnchor(isoOf(addDaysIso(anchorD, -7))); else setCur(c => { const m = c.m - 1; return m < 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m }; }); };
+  const goNext = () => { if (isWeek) setWeekAnchor(isoOf(addDaysIso(anchorD, 7))); else setCur(c => { const m = c.m + 1; return m > 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m }; }); };
+  const goToday = () => { const d = new Date(); if (isWeek) setWeekAnchor(todayISO()); else setCur({ y: d.getFullYear(), m: d.getMonth() }); };
 
   // One flat list of calendar items, each with a start/end range. Tracker dates are single-day; events can span.
   const hasUnbucketed = (events || []).some(e => !e.bucket);
@@ -4316,26 +4329,33 @@ function CalendarView({ ctx }) {
       </div>
       <div className="panel">
         <div className="cal-head">
-          <div className="cal-m">{monthName}</div>
-          <div style={{ display: "flex", gap: 6 }}>
+          <div className="cal-m">{isWeek ? weekLabel() : monthName}</div>
+          <div className="cal-noprint" style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div className="mode-pick" style={{ gap: 2 }}>
+              <button className={isWeek ? "" : "on"} onClick={() => setMode("month")}>Month</button>
+              <button className={isWeek ? "on" : ""} onClick={() => { setMode("week"); setWeekAnchor(a => a || today); }}>Week</button>
+            </div>
             <button className="btn btn-sm btn-pri" onClick={() => newEvent(today)} style={{ gap: 5 }}><Plus size={14} />Event</button>
-            <button className="btn icon-btn" onClick={() => setCur(c => { const m = c.m - 1; return m < 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m }; })}><ChevronLeft size={17} /></button>
-            <button className="btn btn-sm" onClick={() => { const d = new Date(); setCur({ y: d.getFullYear(), m: d.getMonth() }); }}>Today</button>
-            <button className="btn icon-btn" onClick={() => setCur(c => { const m = c.m + 1; return m > 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m }; })}><ChevronRight size={17} /></button>
+            <button className="btn icon-btn" onClick={goPrev}><ChevronLeft size={17} /></button>
+            <button className="btn btn-sm" onClick={goToday}>Today</button>
+            <button className="btn icon-btn" onClick={goNext}><ChevronRight size={17} /></button>
+            <button className="btn btn-sm" onClick={() => window.print()} title="Print or save as PDF" style={{ gap: 5 }}><Download size={14} />Print</button>
           </div>
         </div>
         <div className="cal-dow-row">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => <div className="cal-dow" key={d}>{d}</div>)}
         </div>
         <div className="cal-month">
-          {weeks.map((wk, w) => {
+          {displayWeeks.map((wk, w) => {
             const segs = layoutWeek(items, wk.map(c => c.iso));
-            const shown = segs.filter(s => s.lane < LANES);
+            const shown = segs.filter(s => s.lane < laneCap);
             const moreByCol = Array(7).fill(0);
-            segs.filter(s => s.lane >= LANES).forEach(s => { for (let c = s.sc; c <= s.ec; c++) moreByCol[c]++; });
+            segs.filter(s => s.lane >= laneCap).forEach(s => { for (let c = s.sc; c <= s.ec; c++) moreByCol[c]++; });
             const anyMore = moreByCol.some(n => n > 0);
+            const lanesUsed = segs.reduce((m, s) => Math.max(m, s.lane + 1), 0);
+            const laneMin = isWeek ? Math.max(lanesUsed, 8) * 27 : LANES * 27;
             return (
-              <div className="cal-week" key={w}>
+              <div className="cal-week" key={w} style={isWeek ? { minHeight: "62vh" } : undefined}>
                 <div className="cal-week-bg">
                   {wk.map((c, ci) => (
                     <div key={ci} className={`cal-bgcell${c.inMonth ? "" : " out"}${c.isToday ? " today" : ""}`} onClick={() => setDayOpen(c.iso)} title="Click for the day · + to add an event">
@@ -4345,7 +4365,7 @@ function CalendarView({ ctx }) {
                 </div>
                 <div className="cal-week-fg">
                   <div className="cal-nums">{wk.map((c, ci) => <div key={ci} className={`cal-n${c.inMonth ? "" : " out"}${c.isToday ? " today" : ""}`}>{c.day}</div>)}</div>
-                  <div className="cal-lanes" style={{ minHeight: LANES * 27 }}>
+                  <div className="cal-lanes" style={{ minHeight: laneMin }}>
                     {shown.map(seg => (
                       <div key={seg.key} className={`cal-bar${seg.done ? " done" : ""}${seg.contStart ? " cont-l" : ""}${seg.contEnd ? " cont-r" : ""}`}
                         style={{ gridColumn: `${seg.sc + 1} / ${seg.ec + 2}`, gridRow: seg.lane + 1, background: (typeof seg.color === "string" && seg.color.startsWith("#")) ? seg.color + "26" : "var(--raise)", borderLeft: "3px solid " + seg.color }}
@@ -4354,7 +4374,7 @@ function CalendarView({ ctx }) {
                       </div>
                     ))}
                     {anyMore && moreByCol.map((n, ci) => n > 0 ? (
-                      <div key={"m" + ci} className="cal-more" style={{ gridColumn: ci + 1, gridRow: LANES + 1 }} onClick={(e) => { e.stopPropagation(); setDayOpen(wk[ci].iso); }}>+{n} more</div>
+                      <div key={"m" + ci} className="cal-more" style={{ gridColumn: ci + 1, gridRow: laneCap + 1 }} onClick={(e) => { e.stopPropagation(); setDayOpen(wk[ci].iso); }}>+{n} more</div>
                     ) : null)}
                   </div>
                 </div>
@@ -4362,6 +4382,13 @@ function CalendarView({ ctx }) {
             );
           })}
         </div>
+        <style>{`@media print {
+  .bar, .cal-noprint, .cal-add { display: none !important; }
+  .main { padding: 0 !important; }
+  .panel { box-shadow: none !important; border: none !important; }
+  .cal-bgcell { break-inside: avoid; }
+  @page { size: landscape; margin: 10mm; }
+}`}</style>
       </div>
 
       {dayOpen && (() => {
