@@ -3377,6 +3377,10 @@ function TrackerView({ ctx }) {
   const [histOpen, setHistOpen] = useState(false); // version-history panel
   const [snaps, setSnaps] = useState(null);         // loaded on demand (null = loading)
   const [sort, setSort] = useState(null);           // { key, dir:1|-1 } — display-only sort
+  const [mineOnly, setMineOnly] = useState(false);  // show only rows with the current user on the team
+  const [dense, setDense] = useState(() => { try { return localStorage.getItem("cadence:tracker:dense") === "1"; } catch (e) { return false; } });
+  const toggleDense = () => setDense(d => { const n = !d; try { localStorage.setItem("cadence:tracker:dense", n ? "1" : "0"); } catch (e) {} return n; });
+  const myTokens = useMemo(() => { const n = String((ctx.user && ctx.user.name) || "").toLowerCase().trim(); if (!n) return []; const p = n.split(/\s+/); return Array.from(new Set([n, p[0], p[p.length - 1]].filter(Boolean))); }, [ctx.user]);
   const baseDoc = useRef(null); // the doc as last confirmed on the server — the merge base for conflict resolution
   const buildDocFrom = (shs) => ({ sheets: (shs || []).map(s => ({ ...s, rows: (s.rows || []).map(r => ({ ...r, emails: rowEmails(r) })) })) });
   const buildDoc = () => buildDocFrom(sheets);
@@ -3533,9 +3537,10 @@ function TrackerView({ ctx }) {
   const rows = useMemo(() => data.filter(r => {
     if (stage !== "all" && r.stage !== stage) return false;
     if (person !== "all" && !namesIn(r).includes(person)) return false;
+    if (mineOnly && myTokens.length) { const roleText = ROLE_KEYS.map(k => r[k] || "").join(" ").toLowerCase(); if (!myTokens.some(t => roleText.includes(t))) return false; }
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
-  }), [data, stage, person, ql]);
+  }), [data, stage, person, ql, mineOnly, myTokens]);
   // Display-only sort (doesn't change the stored/reorderable order). Dates sort chronologically; stage by its palette order; else text.
   const DATE_SORT_KEYS = ["dueDates", "bidPermitDate"];
   const sortComparable = (r, key) => {
@@ -3689,8 +3694,27 @@ function TrackerView({ ctx }) {
     if (nr < 0 || nr >= viewRows.length || nc < 0 || nc >= ncols.length) return;
     focusCell(viewRows[nr]._id, ncols[nc]);
   };
+  // Paste an Excel/Sheets block (tab-separated columns, newline rows) starting at the focused cell.
+  const pasteBlock = (startRowId, startColKey, text) => {
+    const grid = text.replace(/\r/g, "").split("\n");
+    while (grid.length > 1 && grid[grid.length - 1] === "") grid.pop();
+    const ncols = navColKeys();
+    const sr = viewRows.findIndex(r => r._id === startRowId), sc = ncols.indexOf(startColKey);
+    if (sr < 0 || sc < 0) return;
+    setData(ds => {
+      const next = ds.map(r => ({ ...r }));
+      const idx = new Map(next.map((r, i) => [r._id, i]));
+      grid.forEach((line, ri) => {
+        const target = viewRows[sr + ri]; if (!target) return;      // only fills existing rows
+        const i = idx.get(target._id); if (i == null) return;
+        line.split("\t").forEach((val, ci) => { const key = ncols[sc + ci]; if (key) next[i] = { ...next[i], [key]: val }; });
+      });
+      return next;
+    });
+    setRemoteRev(n => n + 1); // remount cell inputs so the pasted values show immediately
+  };
   const GUT = 46;
-  const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
+  const cell = { border: "1px solid var(--line)", padding: dense ? "1px 8px" : "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
   const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
   const actBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", display: "inline-grid", placeItems: "center", padding: 2 };
@@ -3796,6 +3820,8 @@ function TrackerView({ ctx }) {
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          <button className="btn btn-sm" onClick={() => setMineOnly(m => !m)} title="Show only projects with your name on the team" style={mineOnly ? { gap: 6, borderColor: "var(--teal)", color: "var(--teal)" } : { gap: 6 }}><Users size={14} />My projects</button>
+          <button className="btn btn-sm" onClick={toggleDense} title="Toggle row density" style={{ gap: 6 }}>{dense ? <Minus size={14} /> : <Table size={14} />}{dense ? "Comfortable" : "Compact"}</button>
           <button className="btn btn-sm" onClick={() => setNamesOpen(true)} title="Manage the names that appear when you type into a role cell" style={{ gap: 6 }}><Users size={14} />Names</button>
           <button className="btn btn-sm" onClick={exportXlsx} title="Download this sheet as Excel (current columns, filters & sort)" style={{ gap: 6 }}><Download size={14} />Export</button>
           <button className="btn btn-sm" onClick={openHistory} title="View & restore version snapshots" style={{ gap: 6 }}><Clock size={14} />History</button>
@@ -3859,13 +3885,17 @@ function TrackerView({ ctx }) {
 .trk-table .trk-ml-view:focus{background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);border-radius:2px;}
 .trk-table select.trk-status{width:100%;box-sizing:border-box;border:none;font-family:'Outfit';font-size:12px;font-weight:600;padding:5px 6px;outline:none;cursor:pointer;border-radius:2px;}
 .trk-row{content-visibility:auto;contain-intrinsic-size:auto 40px;}
+.trk-table.dense input{padding-top:2px;padding-bottom:2px;}
+.trk-table.dense textarea.trk-ml,.trk-table.dense .trk-ml-view{padding-top:2px;padding-bottom:2px;min-height:20px;line-height:1.3;}
+.trk-table.dense .trk-role{padding-top:1px;padding-bottom:1px;min-height:18px;line-height:1.35;}
+.trk-table.dense select.trk-status{padding-top:2px;padding-bottom:2px;}
 .trk-gut{cursor:grab;}
 .trk-role{padding:4px 8px;line-height:1.55;cursor:default;min-height:26px;}
 .trk-role a{color:var(--teal);text-decoration:none;}
 .trk-role a:hover{text-decoration:underline;}
 .trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
         <div onFocusCapture={() => { editingRef.current = true; }} onBlurCapture={() => { setTimeout(() => { editingRef.current = false; }, 400); }} style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid var(--line)", borderRadius: 8 }}>
-          <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
+          <table className={"trk-table" + (dense ? " dense" : "")} style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
             <thead>
               <tr>
                 <th style={{ ...headc, width: GUT, minWidth: GUT, background: "var(--raise)" }}></th>
@@ -3928,6 +3958,7 @@ function TrackerView({ ctx }) {
                             else if (k === "ArrowLeft" && t.selectionStart === 0 && t.selectionEnd === 0) { e.preventDefault(); navCell(r._id, c.key, "left"); }
                             else if (k === "ArrowRight" && t.selectionStart === t.value.length && t.selectionEnd === t.value.length) { e.preventDefault(); navCell(r._id, c.key, "right"); }
                           }}
+                          onPaste={e => { const text = e.clipboardData.getData("text/plain"); if (text && (text.includes("\t") || text.includes("\n"))) { e.preventDefault(); pasteBlock(r._id, c.key, text); } }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
                     </td>
