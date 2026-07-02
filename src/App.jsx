@@ -365,6 +365,7 @@ const NAV = [
   { id: "tracker", label: "Tracker", Icon: Table },
   { id: "gantt", label: "Gantt", Icon: GanttChartSquare },
   { id: "todo", label: "To-do", Icon: CheckCircle2 },
+  { id: "workload", label: "Workload", Icon: Users },
   { id: "calendar", label: "Calendar", Icon: CalendarDays },
   // { id: "team", label: "Team", Icon: Users }, // Team tab hidden — re-enable this line (and the route below) to bring it back.
 ];
@@ -694,6 +695,7 @@ export default function App() {
         {view === "gantt" && <ForecastView ctx={ctx} />}
         {view === "projections" && <ProjectionsView ctx={ctx} />}
         {view === "todo" && <TodoView ctx={ctx} />}
+        {view === "workload" && <WorkloadView ctx={ctx} />}
         {view === "calendar" && <CalendarView ctx={ctx} />}
         {/* {view === "team" && <TeamView ctx={ctx} />} */}{/* Team tab hidden — re-enable with the NAV entry above. */}
       </div>
@@ -4170,6 +4172,78 @@ function layoutWeek(items, weekDates) {
   });
   return segs;
 }
+/* ---------------- Workload (deadlines per engineer, by week — auto from role columns) ---------------- */
+function WorkloadView({ ctx }) {
+  const [tsheets, setTsheets] = useState(() => { try { const v = localStorage.getItem(SHEETS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } });
+  const [done, setDone] = useState({});
+  useEffect(() => {
+    let on = true;
+    (async () => {
+      try { const d = await apiLoad(); if (on && d && d.sheets) setTsheets(d.sheets); } catch (e) {}
+      try { const t = await todoLoad(); if (on && t && t.done) setDone(t.done); } catch (e) {}
+    })();
+    return () => { on = false; };
+  }, []);
+  const RK = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
+  const namesOf = (r) => { const set = new Set(); RK.forEach(k => String(r[k] || "").split(/\n|\/| and /).forEach(x => { const s = x.trim(); if (s && !TRACKER_BLOCK.has(s.toUpperCase())) set.add(s); })); return [...set]; };
+  const today = todayISO();
+  const wkStartOf = (iso) => { const d = new Date(iso + "T00:00:00"); return addDaysIso(d, -d.getDay()); };
+  const curWk = wkStartOf(today);
+  const NWK = 8;
+  const weekLabels = Array.from({ length: NWK }, (_, i) => addDaysIso(curWk, i * 7).toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+  const map = {};
+  const rec = (nm) => { const k = nm.toLowerCase(); if (!map[k]) map[k] = { name: nm, overdue: 0, weeks: new Array(NWK).fill(0), later: 0, total: 0 }; return map[k]; };
+  const addDl = (nm, iso) => { const r = rec(nm); const wi = Math.floor((new Date(iso + "T00:00:00") - curWk) / 604800000); if (wi < 0) r.overdue++; else if (wi < NWK) r.weeks[wi]++; else r.later++; r.total++; };
+  (tsheets || []).forEach(s => (s.rows || []).forEach(r => {
+    const engs = namesOf(r); if (!engs.length) return;
+    parseTrackerDates(r.dueDates).forEach(d => { if (!done["due|" + s.id + "|" + r._id + "|" + d]) engs.forEach(nm => addDl(nm, d)); });
+    parseTrackerDates(r.bidPermitDate).forEach(d => { if (!done["bid|" + s.id + "|" + r._id + "|" + d]) engs.forEach(nm => addDl(nm, d)); });
+  }));
+  const rows = Object.values(map).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+  const cbg = (n) => n >= 5 ? "rgba(224,58,62,0.20)" : n >= 3 ? "rgba(232,165,60,0.18)" : n >= 1 ? "rgba(79,168,232,0.10)" : "transparent";
+  const ctx0 = (n) => n >= 5 ? "#E03A3E" : n >= 3 ? "#E8A53C" : "var(--ink)";
+  const th = { padding: "8px 6px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textAlign: "center", position: "sticky", top: 0, background: "var(--panel2)", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" };
+  const td = { padding: "6px", textAlign: "center", borderBottom: "1px solid var(--line)", fontSize: 12.5, fontWeight: 700 };
+  return (
+    <>
+      <div className="head">
+        <div><div className="h-title">Workload</div><div className="h-sub">Open deadlines per engineer, by week — pulled automatically from the tracker's role columns (excludes items checked off in To-do). Red = a heavy week.</div></div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 11.5, color: "var(--muted)" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "rgba(232,165,60,0.35)" }} />3–4 / wk</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "rgba(224,58,62,0.35)" }} />5+ / wk</span>
+        </div>
+      </div>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ overflow: "auto", maxHeight: "80vh" }}>
+          <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: "left", left: 0, zIndex: 3, background: "var(--panel2)", minWidth: 170 }}>Engineer</th>
+                <th style={{ ...th, color: "#E03A3E" }}>Overdue</th>
+                {weekLabels.map((w, i) => <th key={i} style={th}>{i === 0 ? "This wk" : w}</th>)}
+                <th style={th}>Later</th>
+                <th style={{ ...th, color: "var(--teal)" }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && <tr><td colSpan={NWK + 4} style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No open deadlines assigned. Add engineers to role columns and due dates in the tracker.</td></tr>}
+              {rows.map(r => (
+                <tr key={r.name}>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--line)", fontWeight: 600, fontSize: 13, position: "sticky", left: 0, background: "var(--panel)", whiteSpace: "nowrap" }}>{r.name}</td>
+                  <td style={{ ...td, background: r.overdue ? "rgba(224,58,62,0.16)" : "transparent", color: r.overdue ? "#E03A3E" : "var(--dim)" }}>{r.overdue || ""}</td>
+                  {r.weeks.map((n, i) => <td key={i} style={{ ...td, background: cbg(n), color: n ? ctx0(n) : "var(--dim)" }}>{n || ""}</td>)}
+                  <td style={{ ...td, color: r.later ? "var(--ink)" : "var(--dim)" }}>{r.later || ""}</td>
+                  <td style={{ ...td, color: "var(--teal)", fontSize: 13.5 }}>{r.total}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ---------------- To-do (all due dates as a checklist, synced done-state) ---------------- */
 function TodoView({ ctx }) {
   const gd = ctx.gantt;
