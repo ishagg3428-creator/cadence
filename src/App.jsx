@@ -3659,7 +3659,7 @@ function TrackerView({ ctx }) {
     XLSX.utils.book_append_sheet(wb, ws, String(activeLabel || "Tracker").replace(/[^\w ]/g, "").slice(0, 31) || "Tracker");
     XLSX.writeFile(wb, `tracker-${String(activeLabel || "sheet").replace(/[^a-z0-9]+/gi, "-")}-${todayISO()}.xlsx`);
   };
-  const GUT = 62;
+  const GUT = 46;
   const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
   const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
@@ -3834,32 +3834,11 @@ function TrackerView({ ctx }) {
 .trk-role a{color:var(--teal);text-decoration:none;}
 .trk-role a:hover{text-decoration:underline;}
 .trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
-        {selCount > 0 && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", marginBottom: 10, background: "var(--panel2)", border: "1px solid var(--teal)", borderRadius: 10 }}>
-            <b style={{ fontSize: 13 }}>{selCount} selected</b>
-            <span style={{ color: "var(--line2)" }}>|</span>
-            <select className="btn btn-sm" defaultValue="" onChange={e => { bulkStage(e.target.value); e.target.value = ""; }} title="Set status for selected rows">
-              <option value="">Set status…</option>
-              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select className="btn btn-sm" value={bulkCol} onChange={e => setBulkCol(e.target.value)} title="Choose a field to set">
-              <option value="">Set field…</option>
-              {cols.filter(c => c.key !== "stage").map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-            </select>
-            <input value={bulkVal} onChange={e => setBulkVal(e.target.value)} placeholder="value…" style={{ width: 140, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 13, outline: "none" }} />
-            <button className="btn btn-sm" disabled={!bulkCol} onClick={() => bulkSetField(bulkCol, bulkVal)} title="Apply the value to selected rows">Apply</button>
-            <div style={{ flex: 1 }} />
-            <button className="btn btn-sm" onClick={() => { if (window.confirm(`Delete ${selCount} selected row${selCount === 1 ? "" : "s"}? You can undo from “Undo delete.”`)) bulkDelete(); }} style={{ gap: 5, color: "#c0392b" }}><Trash2 size={14} />Delete</button>
-            <button className="btn btn-sm" onClick={clearSel}>Clear</button>
-          </div>
-        )}
         <div onFocusCapture={() => { editingRef.current = true; }} onBlurCapture={() => { setTimeout(() => { editingRef.current = false; }, 400); }} style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid var(--line)", borderRadius: 8 }}>
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
             <thead>
               <tr>
-                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}>
-                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} title="Select all shown rows" style={{ width: 14, height: 14, accentColor: "var(--primary)", cursor: "pointer" }} />
-                </th>
+                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}></th>
                 {visibleCols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
@@ -3888,13 +3867,8 @@ function TrackerView({ ctx }) {
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className={sort ? "" : "trk-gut"} draggable={!sort} onDragStart={() => { if (!sort) setDragId(r._id); }} onDragEnd={() => { setDragId(null); setOverId(null); }}
-                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title={sort ? "Clear the sort to drag-reorder rows" : "Click to highlight this row · drag to reorder · checkbox to select"}
-                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                      <input type="checkbox" checked={!!selected[r._id]} onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); toggleSel(r._id); }} style={{ width: 13, height: 13, accentColor: "var(--primary)", cursor: "pointer" }} />
-                      {ri + 1}
-                    </span>
-                  </td>
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title={sort ? "Clear the sort to drag-reorder rows" : "Click to highlight this row · drag to reorder"}
+                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     const isML = MULTILINE.includes(c.key);
