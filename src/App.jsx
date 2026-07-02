@@ -407,12 +407,22 @@ function GlobalSearch({ ctx }) {
   const [open, setOpen] = useState(false);
   const [extra, setExtra] = useState({ forecast: null, events: null });
   const ref = useRef(null);
+  const inputRef = useRef(null);
   useEffect(() => {
     if (!open) return;
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
+  // ⌘K / Ctrl-K from anywhere focuses the search.
+  useEffect(() => {
+    const h = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); setOpen(true); loadExtra(); if (inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }
+      else if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, []);
   const loadExtra = async () => {
     if (extra.forecast || extra.events) return;
     let forecast = [], events = [];
@@ -443,8 +453,8 @@ function GlobalSearch({ ctx }) {
     <div ref={ref} style={{ position: "relative", flex: 1, maxWidth: 420, minWidth: 120, margin: "0 10px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 9, padding: "5px 9px" }}>
         <Search size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
-        <input value={q} onFocus={() => { setOpen(true); loadExtra(); }} onChange={e => { setQ(e.target.value); setOpen(true); }}
-          placeholder="Search projects, forecast, events…"
+        <input ref={inputRef} value={q} onFocus={() => { setOpen(true); loadExtra(); }} onChange={e => { setQ(e.target.value); setOpen(true); }}
+          placeholder="Search…  (⌘K)"
           style={{ border: "none", background: "transparent", outline: "none", color: "var(--ink)", fontFamily: "Outfit", fontSize: 13, width: "100%" }} />
         {q && <X size={14} style={{ color: "var(--muted)", cursor: "pointer", flexShrink: 0 }} onClick={() => setQ("")} />}
       </div>
@@ -491,7 +501,8 @@ export default function App() {
   useEffect(() => { saveContacts(contacts); }, [contacts]);
   const [compose, setCompose] = useState(null);
   const openComposer = (ids, source) => { const subj = source ? `[${source.group ? `${source.project} — ${source.group}` : (source.project || "Cadence")}] ` : ""; setCompose({ ids: [...new Set(ids)], subject: subj, body: "", picking: false, groupName: "", source: source || null }); };
-  const [view, setView] = useState("home");
+  const [view, setViewRaw] = useState(() => { try { return localStorage.getItem("cadence:lastView") || "home"; } catch (e) { return "home"; } });
+  const setView = (v) => { try { localStorage.setItem("cadence:lastView", v); } catch (e) {} setViewRaw(v); };
   const [menuOpen, setMenuOpen] = useState(false);
   const [q, setQ] = useState("");
   const [fPerson, setFPerson] = useState("all");
@@ -3334,7 +3345,9 @@ function TrackerView({ ctx }) {
     try { const v = localStorage.getItem(SHEETS_KEY); if (v) { const p = JSON.parse(v); if (Array.isArray(p) && p.length && p[0].rows) return p; } } catch (e) {}
     return SEED_SHEETS;
   });
-  const [activeSheet, setActiveSheet] = useState(() => (SEED_SHEETS[0] && SEED_SHEETS[0].id) || "com1");
+  const [activeSheet, setActiveSheet] = useState(() => { try { const s = localStorage.getItem("cadence:tracker:lastSheet"); if (s) return s; } catch (e) {} return (SEED_SHEETS[0] && SEED_SHEETS[0].id) || "com1"; });
+  useEffect(() => { try { localStorage.setItem("cadence:tracker:lastSheet", activeSheet); } catch (e) {} }, [activeSheet]);
+  useEffect(() => { if (sheets.length && !sheets.find(s => s.id === activeSheet)) setActiveSheet(sheets[0].id); }, [sheets]);
   const [renamingSheet, setRenamingSheet] = useState(null);
   const sheetObj = sheets.find(s => s.id === activeSheet) || sheets[0] || { id: "com1", name: "COM-1", rows: [], cols: [], statuses: [] };
   const data = (sheetObj.rows || []).map((r, i) => r._id ? r : { ...r, _id: "r" + (r.rowNumber || i) });
@@ -3659,6 +3672,23 @@ function TrackerView({ ctx }) {
     XLSX.utils.book_append_sheet(wb, ws, String(activeLabel || "Tracker").replace(/[^\w ]/g, "").slice(0, 31) || "Tracker");
     XLSX.writeFile(wb, `tracker-${String(activeLabel || "sheet").replace(/[^a-z0-9]+/gi, "-")}-${todayISO()}.xlsx`);
   };
+  // Keyboard grid navigation across the plain text-input cells (role/status/multi-line cells are their own editors).
+  const navColKeys = () => visibleCols.filter(c => !ROLE_KEYS.includes(c.key) && c.key !== "stage" && !MULTILINE.includes(c.key)).map(c => c.key);
+  const focusCell = (rid, ckey) => { const el = document.getElementById("cell-" + rid + "-" + ckey); if (el) { el.focus(); if (el.select) el.select(); } };
+  const navCell = (rowId, colKey, dir) => {
+    const ncols = navColKeys();
+    let ri = viewRows.findIndex(r => r._id === rowId), ci = ncols.indexOf(colKey);
+    if (ri < 0 || ci < 0) return;
+    let nr = ri, nc = ci;
+    if (dir === "up") nr = ri - 1;
+    else if (dir === "down") nr = ri + 1;
+    else if (dir === "left") nc = ci - 1;
+    else if (dir === "right") nc = ci + 1;
+    else if (dir === "next") { nc = ci + 1; if (nc >= ncols.length) { nc = 0; nr = ri + 1; } }
+    else if (dir === "prev") { nc = ci - 1; if (nc < 0) { nc = ncols.length - 1; nr = ri - 1; } }
+    if (nr < 0 || nr >= viewRows.length || nc < 0 || nc >= ncols.length) return;
+    focusCell(viewRows[nr]._id, ncols[nc]);
+  };
   const GUT = 46;
   const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
@@ -3889,7 +3919,15 @@ function TrackerView({ ctx }) {
                         <MlCell key={r._id + "-" + c.key + "-" + remoteRev} value={r[c.key]} onSave={v => update(r._id, c.key, v)} idAttr={"cell-" + r._id + "-" + c.key} />
                       ) : (
                         <input key={r._id + "-" + c.key + "-" + remoteRev} id={"cell-" + r._id + "-" + c.key} defaultValue={r[c.key]} title={r[c.key]} style={{ fontWeight: c.key === "projectName" ? 600 : 400 }}
-                          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const vi = viewRows.findIndex(x => x._id === r._id); const next = viewRows[vi + (e.shiftKey ? -1 : 1)]; if (next) { const el = document.getElementById("cell-" + next._id + "-" + c.key); if (el) { el.focus(); el.select && el.select(); } } } }}
+                          onKeyDown={e => {
+                            const k = e.key, t = e.target;
+                            if (k === "Enter") { e.preventDefault(); navCell(r._id, c.key, e.shiftKey ? "up" : "down"); }
+                            else if (k === "Tab") { e.preventDefault(); navCell(r._id, c.key, e.shiftKey ? "prev" : "next"); }
+                            else if (k === "ArrowUp") { e.preventDefault(); navCell(r._id, c.key, "up"); }
+                            else if (k === "ArrowDown") { e.preventDefault(); navCell(r._id, c.key, "down"); }
+                            else if (k === "ArrowLeft" && t.selectionStart === 0 && t.selectionEnd === 0) { e.preventDefault(); navCell(r._id, c.key, "left"); }
+                            else if (k === "ArrowRight" && t.selectionStart === t.value.length && t.selectionEnd === t.value.length) { e.preventDefault(); navCell(r._id, c.key, "right"); }
+                          }}
                           onBlur={e => { if (e.target.value !== (r[c.key] ?? "")) update(r._id, c.key, e.target.value); }} />
                       )}
                     </td>
