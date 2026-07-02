@@ -6,12 +6,17 @@ import { neon } from "@neondatabase/serverless";
 let _sql = null;
 function db() { if (!_sql) _sql = neon(process.env.DATABASE_URL); return _sql; }
 
+// Run the CREATE TABLE only once per warm function instance — not on every request. This roughly
+// halves Neon queries (each poll was previously doing a redundant "create table if not exists").
+let tableReady = false;
 async function ensureTable() {
+  if (tableReady) return;
   await db()`create table if not exists tracker_doc (
     id int primary key,
     doc jsonb not null,
     v bigint not null default 0
   )`;
+  tableReady = true;
 }
 
 export default async function handler(req, res) {
@@ -32,6 +37,17 @@ export default async function handler(req, res) {
       if (req.query && req.query.meta) {
         const vr = await sql`select v from tracker_doc where id = ${docId}`;
         return res.status(200).json({ v: vr.length ? Number(vr[0].v) : 0 });
+      }
+      // Single-request poll (?since=<v>): one tiny "select v"; only fetch the full doc when it actually
+      // changed — so an unchanged poll is one small query and a changed poll is one HTTP round trip.
+      if (req.query && req.query.since != null && req.query.since !== "") {
+        const since = Number(req.query.since);
+        const vr = await sql`select v from tracker_doc where id = ${docId}`;
+        const curV = vr.length ? Number(vr[0].v) : 0;
+        if (curV === since) return res.status(200).json({ unchanged: true, v: curV });
+        const chg = await sql`select doc, v from tracker_doc where id = ${docId}`;
+        if (!chg.length) return res.status(200).json(null);
+        return res.status(200).json({ ...chg[0].doc, v: Number(chg[0].v) });
       }
       const rows = await sql`select doc, v from tracker_doc where id = ${docId}`;
       if (!rows.length) return res.status(200).json(null);

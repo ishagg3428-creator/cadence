@@ -11,7 +11,7 @@ import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
 import * as XLSX from "xlsx";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, snapsLoad, snapsSave, namesLoad, namesSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, apiPoll, snapsLoad, snapsSave, namesLoad, namesSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -1304,34 +1304,45 @@ function useForecast() {
   const saving = useRef(false);
   const loaded = useRef(false);
   useEffect(() => {
-    let on = true;
-    const pull = async () => {
-      if (saving.current || (typeof document !== "undefined" && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("fc-edit"))) return; // don't yank focus mid-edit
-      try {
-        const v = await apiVersion(3);
-        if (loaded.current && v === ver.current) return; // unchanged — skip the full download
-        const d = await forecastLoad();
-        if (!on) return;
-        if (d && d.projects) {
-          if (d.v !== ver.current) {
-            const projs = normProjects(d.projects);
-            const labs = padLabels(d.months);
-            ver.current = d.v; setProjects(projs); setMonths(labs);
-            if (loaded.current) setRev(n => n + 1); loaded.current = true;
-            // Migrate the stored doc if anything needs upgrading (missing ids, or old 6-month shape -> 12).
-            const needsMigrate = projs.length !== d.projects.length || d.projects.some(p => !p._id || (p.months || []).length !== NMONTHS) || !(d.months && d.months.length === NMONTHS);
-            if (needsMigrate) { saving.current = true; const res = await forecastSave({ projects: projs, months: labs }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; }
-          }
-        } else {
-          const seeded = normProjects(FORECAST_PROJECTS);
-          const res = await forecastSave({ projects: seeded, months: padLabels(FORECAST_MONTHS) }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded); loaded.current = true;
+    let on = true, timer;
+    const MIN = 8000, MAX = 45000;
+    let delay = MIN;
+    const applyDoc = async (d) => {
+      if (d && d.projects) {
+        if (d.v !== ver.current) {
+          const projs = normProjects(d.projects), labs = padLabels(d.months);
+          ver.current = d.v; setProjects(projs); setMonths(labs);
+          if (loaded.current) setRev(n => n + 1);
+          // Migrate the stored doc if anything needs upgrading (dupes removed, missing ids, or old 6-month shape -> 12).
+          const needsMigrate = projs.length !== d.projects.length || d.projects.some(p => !p._id || (p.months || []).length !== NMONTHS) || !(d.months && d.months.length === NMONTHS);
+          if (needsMigrate) { saving.current = true; const res = await forecastSave({ projects: projs, months: labs }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; }
         }
+      } else {
+        const seeded = normProjects(FORECAST_PROJECTS);
+        const res = await forecastSave({ projects: seeded, months: padLabels(FORECAST_MONTHS) }, 0); if (res && res.v) ver.current = res.v; setProjects(seeded);
+      }
+      loaded.current = true;
+    };
+    const pull = async () => {
+      if (saving.current || (typeof document !== "undefined" && document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("fc-edit")) || document.hidden) return false; // don't yank focus mid-edit / skip when hidden
+      try {
+        const d = await apiPoll(3, ver.current); // single-request poll
+        if (!on) return false;
+        if (d && !d.unchanged) { await applyDoc(d); setStatus("live"); return true; }
         setStatus("live");
       } catch (e) { if (!loaded.current) setStatus("offline"); }
+      return false;
     };
-    pull();
-    const t = setInterval(pull, 4000);
-    return () => { on = false; clearInterval(t); };
+    const tick = async () => { if (!on) return; const changed = document.hidden ? false : await pull(); delay = changed ? MIN : Math.min(Math.round(delay * 1.5), MAX); timer = setTimeout(tick, delay); };
+    (async () => {
+      try { const d = await forecastLoad(); if (on) { await applyDoc(d); setStatus("live"); } }
+      catch (e) { if (!loaded.current) setStatus("offline"); }
+      if (on) timer = setTimeout(tick, delay);
+    })();
+    const onFocus = () => { if (!document.hidden) { delay = MIN; pull(); } };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { on = false; if (timer) clearTimeout(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   // Save the doc {projects, months}, re-applying the same change onto the latest copy on conflict.
   const commit = (nextProjects, nextMonths, reapply) => {
@@ -3431,13 +3442,27 @@ function TrackerView({ ctx }) {
     setSheets(withIds(snap.doc.sheets)); setRemoteRev(n => n + 1); setHistOpen(false);
     ctx.toast && ctx.toast("Snapshot restored");
   };
-  // Load all sheets from the shared DB on open, then poll for others' changes (near real-time).
+  // Load all sheets from the shared DB on open, then poll for others' changes. Adaptive backoff +
+  // a single-request poll (?since) keeps Neon queries low and lets its compute sleep when idle.
   useEffect(() => {
     let timer, cancelled = false, flashTimer;
+    const MIN = 4000, MAX = 30000;
+    let delay = MIN;
     const pull = async () => {
-      if (!apiOk.current || document.hidden || editingRef.current || savingRef.current) return; // skip when hidden, editing, or mid-save
-      // Cheap version check first; only download the full (large) doc when it actually changed.
-      try { const v = await apiVersion(); if (v === curV.current) return; const doc = await apiLoad(); if (doc && doc.v !== curV.current) { const sh = docToSheets(doc); if (sh) { const withId = withIds(sh); curV.current = doc.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setRemoteRev(n => n + 1); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); } } } catch (e) {}
+      if (!apiOk.current || document.hidden || editingRef.current || savingRef.current) return false; // skip when hidden, editing, or mid-save
+      try {
+        const res = await apiPoll(1, curV.current); // one query; returns {unchanged} or the full doc
+        if (!res || res.unchanged) return false;
+        const sh = docToSheets(res);
+        if (sh) { const withId = withIds(sh); curV.current = res.v; baseDoc.current = buildDocFrom(withId); setSheets(withId); setRemoteRev(n => n + 1); setSyncState("saving"); clearTimeout(flashTimer); flashTimer = setTimeout(() => setSyncState("saved"), 700); return true; }
+      } catch (e) {}
+      return false;
+    };
+    const tick = async () => {
+      if (cancelled) return;
+      const changed = document.hidden ? false : await pull();
+      delay = changed ? MIN : Math.min(Math.round(delay * 1.5), MAX); // speed up on activity, ease off when quiet
+      timer = setTimeout(tick, delay);
     };
     (async () => {
       try {
@@ -3451,12 +3476,12 @@ function TrackerView({ ctx }) {
       hydrated.current = true;
       if (cancelled) return;
       maybeSnapshot(baseDoc.current); // fire-and-forget daily backup (gated so it runs at most ~once/12h)
-      timer = setInterval(pull, 2000); // poll every 2s (cheap version check; full doc only on change)
+      timer = setTimeout(tick, delay);
     })();
-    const onFocus = () => { if (!document.hidden) pull(); }; // refetch instantly when the tab regains focus
+    const onFocus = () => { if (!document.hidden) { delay = MIN; pull(); } }; // refetch instantly + resume fast polling on focus
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
-    return () => { cancelled = true; if (timer) clearInterval(timer); clearTimeout(flashTimer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
+    return () => { cancelled = true; if (timer) clearTimeout(timer); clearTimeout(flashTimer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   // Persist: local cache always; push to the DB (debounced) unless we just applied a remote change.
   useEffect(() => {
@@ -4173,25 +4198,29 @@ function CalendarView({ ctx }) {
   // Old events stored a single `date`; normalize every event to a start/end range.
   const migrateEv = (e) => ({ ...e, start: e.start || e.date, end: e.end || e.start || e.date });
   useEffect(() => {
-    let on = true;
-    let loadedEv = false;
+    let on = true, timer;
+    const MIN = 6000, MAX = 45000;
+    let delay = MIN;
     const pull = async () => {
-      if (evSaving.current) return;
+      if (evSaving.current || document.hidden) return false;
       try {
-        const v = await apiVersion(2);
-        if (loadedEv && v === evV.current) return;
-        loadedEv = true;
-        const d = await calLoad();
-        if (on && d && d.v !== evV.current) {
+        const d = await apiPoll(2, evV.current); // single-request poll (calendar events)
+        if (on && d && !d.unchanged && d.v !== evV.current) {
           evV.current = d.v || 0;
           setEvents((d.events || []).map(migrateEv));
           if (d.buckets && d.buckets.length) setBuckets(d.buckets);
+          return true;
         }
       } catch (e) {}
+      return false;
     };
+    const tick = async () => { if (!on) return; const changed = document.hidden ? false : await pull(); delay = changed ? MIN : Math.min(Math.round(delay * 1.5), MAX); timer = setTimeout(tick, delay); };
     pull();
-    const t = setInterval(pull, 2500);
-    return () => { on = false; clearInterval(t); };
+    timer = setTimeout(tick, delay);
+    const onFocus = () => { if (!document.hidden) { delay = MIN; pull(); } };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { on = false; if (timer) clearTimeout(timer); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   // Apply one mutation to the whole {events, buckets} doc. Used both for the optimistic local update
   // and to re-apply the same op onto a teammate's copy if we hit a save conflict.

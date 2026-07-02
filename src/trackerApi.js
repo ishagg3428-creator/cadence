@@ -37,6 +37,14 @@ export async function apiVersion(id) {
   const j = await r.json();
   return j && typeof j.v === "number" ? j.v : 0;
 }
+// Single-request poll: returns { unchanged:true, v } when nothing changed, else the full doc {..., v}
+// (or null if empty). One query on the common unchanged path; one round trip when it changed.
+export async function apiPoll(id, since) {
+  const qs = "?since=" + encodeURIComponent(since == null ? 0 : since) + (id ? "&id=" + id : "");
+  const r = await fetch("/api/tracker" + qs, { cache: "no-store", headers: authHeaders() });
+  if (!r.ok) throw new Error("poll failed");
+  return r.json();
+}
 export async function apiSave(doc, baseV) {
   const headers = authHeaders({ "Content-Type": "application/json" });
   if (baseV != null) headers["x-base-v"] = String(baseV);
