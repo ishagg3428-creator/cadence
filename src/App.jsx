@@ -503,6 +503,8 @@ export default function App() {
   const openComposer = (ids, source) => { const subj = source ? `[${source.group ? `${source.project} — ${source.group}` : (source.project || "Cadence")}] ` : ""; setCompose({ ids: [...new Set(ids)], subject: subj, body: "", picking: false, groupName: "", source: source || null }); };
   const [view, setViewRaw] = useState(() => { try { return localStorage.getItem("cadence:lastView") || "home"; } catch (e) { return "home"; } });
   const setView = (v) => { try { localStorage.setItem("cadence:lastView", v); } catch (e) {} setViewRaw(v); };
+  const [toasts, setToasts] = useState([]);
+  const toast = (msg, kind) => { const id = uid(); setToasts(ts => [...ts, { id, msg, kind: kind || "ok" }]); setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 2600); };
   const [menuOpen, setMenuOpen] = useState(false);
   const [q, setQ] = useState("");
   const [fPerson, setFPerson] = useState("all");
@@ -622,6 +624,7 @@ export default function App() {
     trackerGoto, gotoTrackerRow, clearTrackerGoto: () => setTrackerGoto(null),
     notif, setNotif,
     contacts, setContacts, openComposer,
+    toast,
     effLight, theme,
     loadSample: () => setData(SAMPLE) };
 
@@ -706,6 +709,16 @@ export default function App() {
       {profileOpen && <ProfileModal user={user} onClose={() => setProfileOpen(false)} onSave={updateUser} />}
       {teamEmail && <TeamEmailModal project={teamEmail} members={projectMembers(teamEmail.id)} fromUser={user} onClose={() => setTeamEmail(null)} onSend={(p) => { sendTeamEmail(p); setTeamEmail(null); }} />}
       {compose && <EmailComposerModal ctx={ctx} compose={compose} setCompose={setCompose} />}
+      {toasts.length > 0 && (
+        <div style={{ position: "fixed", bottom: 20, right: 20, zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
+          {toasts.map(t => (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--panel2)", border: "1px solid " + (t.kind === "error" ? "#E03A3E" : "var(--teal)"), color: "var(--ink)", borderRadius: 10, padding: "10px 14px", fontSize: 13, fontWeight: 600, boxShadow: "0 10px 30px rgba(0,0,0,.35)", maxWidth: 340 }}>
+              {t.kind === "error" ? <AlertCircle size={15} color="#E03A3E" /> : <Check size={15} color="var(--teal)" />}
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{t.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1376,11 +1389,11 @@ function ForecastView({ ctx }) {
     if (!file) return;
     try {
       const projs = await parseForecastFile(file, MONTHS);
-      if (!projs.length) { alert("No projects found — make sure it's a Deltek “Project Forecast” export (.xlsx)."); return; }
+      if (!projs.length) { ctx.toast ? ctx.toast("No projects found — is it a Deltek “Project Forecast” .xlsx?", "error") : alert("No projects found."); return; }
       if (!window.confirm("Import " + projs.length + " projects from this file? This replaces the current forecast for everyone.")) return;
       replaceAll(projs);
-      alert("Imported " + projs.length + " projects from the export.");
-    } catch (e) { alert("Couldn't read that file: " + (e && e.message ? e.message : e)); }
+      ctx.toast ? ctx.toast("Imported " + projs.length + " projects") : alert("Imported " + projs.length + " projects.");
+    } catch (e) { ctx.toast ? ctx.toast("Couldn't read that file", "error") : alert("Couldn't read that file: " + (e && e.message ? e.message : e)); }
   };
   // Until the live copy loads, don't render the stale starter snapshot (its total differs from the
   // synced value, which used to look like "clicking deleted a project").
@@ -3198,7 +3211,7 @@ const rowEmails = (r) => {
 };
 const ALL_NAMES = Object.keys(EMAIL_DIR).map(k => k.replace(/\b\w/g, c => c.toUpperCase()));
 
-function RoleCell({ value, onSave, effLight, theme, nameList }) {
+function RoleCell({ value, onSave, effLight, theme, nameList, onCopy }) {
   const NAME_LIST = nameList && nameList.length ? nameList : ALL_NAMES;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -3292,7 +3305,7 @@ function RoleCell({ value, onSave, effLight, theme, nameList }) {
   return (
     <div className="trk-role" onDoubleClick={() => { setDraft(names.join("\n")); setEditing(true); }} title="Double-click to edit">
       {names.length === 0 ? <span style={{ color: "#b9c1cd", paddingLeft: 8 }}>—</span> :
-        names.map((n, i) => { const e = trackerEmailFor(n); return <div key={i}>{e ? <a href={"mailto:" + e} onClick={ev => ev.stopPropagation()}>{n}</a> : <span>{n}</span>}</div>; })}
+        names.map((n, i) => { const e = trackerEmailFor(n); return <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>{e ? <a href={"mailto:" + e} onClick={ev => ev.stopPropagation()}>{n}</a> : <span>{n}</span>}{e && <Copy size={11} title={"Copy " + e} onClick={ev => { ev.stopPropagation(); ev.preventDefault(); try { navigator.clipboard && navigator.clipboard.writeText(e); } catch (x) {} onCopy && onCopy(e); }} style={{ cursor: "pointer", color: "var(--dim)", flexShrink: 0 }} />}</div>; })}
     </div>
   );
 }
@@ -3410,12 +3423,13 @@ function TrackerView({ ctx }) {
     try { await writeSnapshot(doc); } catch (e) {}
   };
   const openHistory = async () => { setHistOpen(true); setSnaps(null); try { const d = await snapsLoad(); setSnaps((d && d.snaps) || []); } catch (e) { setSnaps([]); } };
-  const snapshotNow = async () => { try { const next = await writeSnapshot(buildDoc()); if (next) setSnaps(next); } catch (e) {} };
+  const snapshotNow = async () => { try { const next = await writeSnapshot(buildDoc()); if (next) { setSnaps(next); ctx.toast && ctx.toast("Snapshot saved"); } } catch (e) {} };
   const restoreSnap = async (snap) => {
     if (!snap || !snap.doc || !snap.doc.sheets) return;
     if (!window.confirm("Restore this snapshot? The current tracker will be replaced with this saved version. (Your current data is snapshotted first, so you can undo by restoring a newer one.)")) return;
     try { await writeSnapshot(buildDoc()); } catch (e) {}
     setSheets(withIds(snap.doc.sheets)); setRemoteRev(n => n + 1); setHistOpen(false);
+    ctx.toast && ctx.toast("Snapshot restored");
   };
   // Load all sheets from the shared DB on open, then poll for others' changes (near real-time).
   useEffect(() => {
@@ -3541,6 +3555,8 @@ function TrackerView({ ctx }) {
     if (ql && !(`${r.projectName} ${r.client} ${r.vantagepoint} ${r.pm} ${r.ml} ${r.me} ${r.pe} ${r.ee} ${r.fp}`.toLowerCase().includes(ql))) return false;
     return true;
   }), [data, stage, person, ql, mineOnly, myTokens]);
+  // Project names that appear on more than one row in this sheet (flagged in the grid).
+  const dupNames = useMemo(() => { const c = {}; data.forEach(r => { const n = String(r.projectName || "").trim().toLowerCase(); if (n) c[n] = (c[n] || 0) + 1; }); return new Set(Object.keys(c).filter(k => c[k] > 1)); }, [data]);
   // Display-only sort (doesn't change the stored/reorderable order). Dates sort chronologically; stage by its palette order; else text.
   const DATE_SORT_KEYS = ["dueDates", "bidPermitDate"];
   const sortComparable = (r, key) => {
@@ -3676,6 +3692,7 @@ function TrackerView({ ctx }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, String(activeLabel || "Tracker").replace(/[^\w ]/g, "").slice(0, 31) || "Tracker");
     XLSX.writeFile(wb, `tracker-${String(activeLabel || "sheet").replace(/[^a-z0-9]+/gi, "-")}-${todayISO()}.xlsx`);
+    ctx.toast && ctx.toast("Exported to Excel");
   };
   // Keyboard grid navigation across the plain text-input cells (role/status/multi-line cells are their own editors).
   const navColKeys = () => visibleCols.filter(c => !ROLE_KEYS.includes(c.key) && c.key !== "stage" && !MULTILINE.includes(c.key)).map(c => c.key);
@@ -3933,11 +3950,13 @@ function TrackerView({ ctx }) {
                     const isRole = ROLE_KEYS.includes(c.key);
                     const isML = MULTILINE.includes(c.key);
                     const badDates = (c.key === "dueDates" || c.key === "bidPermitDate") ? invalidDateTokens(r[c.key]) : [];
+                    const isDup = c.key === "projectName" && r.projectName && dupNames.has(String(r.projectName).trim().toLowerCase());
                     return (
                     <td key={c.key} style={{ ...cell, position: "relative", width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: (isRole || isML) ? "top" : "middle", whiteSpace: (isRole || isML) ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
                       {badDates.length > 0 && <span title={"This won't show on the calendar — invalid date: " + badDates.join(", ") + ". Use M/D or M/D/YY (month 1–12, day 1–31)."} style={{ position: "absolute", top: 2, right: 2, zIndex: 2, fontSize: 11, lineHeight: 1, color: "#E8A53C", cursor: "help" }}>⚠</span>}
+                      {isDup && <span title="Duplicate project name — another row in this sheet has the same name." style={{ position: "absolute", top: 2, right: 2, zIndex: 2, fontSize: 9, fontWeight: 800, lineHeight: 1, color: "#fff", background: "#E8A53C", borderRadius: 4, padding: "1px 4px", cursor: "help" }}>DUP</span>}
                       {isRole ? (
-                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} nameList={allNames} />
+                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} nameList={allNames} onCopy={email => ctx.toast && ctx.toast("Copied " + email)} />
                       ) : c.key === "stage" ? (
                         <select className="trk-status" value={r.stage || ""} onChange={e => setStatus(r._id, e.target.value)}
                           style={{ color: r.stage ? statusColor(r.stage) : "#9aa6b6", background: r.stage ? statusColor(r.stage) + "1f" : "transparent" }}>
