@@ -400,6 +400,74 @@ const SAMPLE = {
   ],
 };
 
+// One search box that spans the whole app: tracker rows (all sheets, from the local cache) plus the
+// forecast and calendar events (lazy-loaded on first use). Clicking a result jumps straight to it.
+function GlobalSearch({ ctx }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const [extra, setExtra] = useState({ forecast: null, events: null });
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const loadExtra = async () => {
+    if (extra.forecast || extra.events) return;
+    let forecast = [], events = [];
+    try { const d = await forecastLoad(); forecast = (d && d.projects) || []; } catch (e) {}
+    try { const d = await calLoad(); events = (d && d.events) || []; } catch (e) {}
+    setExtra({ forecast, events });
+  };
+  const ql = q.trim().toLowerCase();
+  let results = [];
+  if (ql.length >= 2) {
+    let sheets = [];
+    try { sheets = JSON.parse(localStorage.getItem(SHEETS_KEY) || "[]"); } catch (e) {}
+    (sheets || []).forEach(s => (s.rows || []).forEach(r => {
+      if (`${r.projectName || r.name || ""} ${r.client || ""} ${r.vantagepoint || ""}`.toLowerCase().includes(ql))
+        results.push({ kind: "tracker", label: r.projectName || r.name || "(untitled)", sub: (s.name || "Sheet") + (r.client ? " · " + r.client : ""), go: () => ctx.gotoTrackerRow(s.id, r._id) });
+    }));
+    (extra.forecast || []).forEach(p => {
+      if (`${p.name || ""} ${p.number || ""} ${p.pm || ""}`.toLowerCase().includes(ql))
+        results.push({ kind: "forecast", label: p.name || "(untitled)", sub: "Forecast" + (p.number ? " · " + p.number : ""), go: () => ctx.setView("gantt") });
+    });
+    (extra.events || []).forEach(e => {
+      if (`${e.title || ""}`.toLowerCase().includes(ql))
+        results.push({ kind: "event", label: e.title || "(untitled)", sub: "Calendar", go: () => ctx.setView("calendar") });
+    });
+  }
+  const shown = results.slice(0, 30);
+  return (
+    <div ref={ref} style={{ position: "relative", flex: 1, maxWidth: 420, minWidth: 120, margin: "0 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: 9, padding: "5px 9px" }}>
+        <Search size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
+        <input value={q} onFocus={() => { setOpen(true); loadExtra(); }} onChange={e => { setQ(e.target.value); setOpen(true); }}
+          placeholder="Search projects, forecast, events…"
+          style={{ border: "none", background: "transparent", outline: "none", color: "var(--ink)", fontFamily: "Outfit", fontSize: 13, width: "100%" }} />
+        {q && <X size={14} style={{ color: "var(--muted)", cursor: "pointer", flexShrink: 0 }} onClick={() => setQ("")} />}
+      </div>
+      {open && ql.length >= 2 && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 60, background: "var(--panel2)", border: "1px solid var(--line2)", borderRadius: 12, boxShadow: "0 16px 40px rgba(0,0,0,.45)", maxHeight: 440, overflowY: "auto", padding: 6 }}>
+          {shown.length === 0 && <div style={{ padding: "10px 12px", fontSize: 13, color: "var(--muted)" }}>No matches.</div>}
+          {shown.map((r, i) => (
+            <div key={i} onClick={() => { r.go(); setOpen(false); setQ(""); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--raise)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+              <span style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".4px", color: "#fff", background: r.kind === "tracker" ? "var(--primary)" : r.kind === "forecast" ? "var(--teal)" : "#9A6BF0", borderRadius: 5, padding: "2px 6px", flexShrink: 0 }}>{r.kind}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontSize: 13.5, fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.label}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.sub}</span>
+              </span>
+            </div>
+          ))}
+          {results.length > shown.length && <div style={{ padding: "6px 12px", fontSize: 11.5, color: "var(--muted)" }}>+{results.length - shown.length} more — refine your search</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [data, setData] = useState({ people: [], projects: [], tasks: [] });
   const [loaded, setLoaded] = useState(false);
@@ -601,7 +669,7 @@ export default function App() {
             </button>
           ))}
         </div>
-        <div className="bar-sp" />
+        <GlobalSearch ctx={ctx} />
         <button className="btn icon-btn" onClick={cycleTheme} title={`Theme: ${theme}`}><ThemeIcon size={16} /></button>
         <div className="brand-min"><span className="bm"><LayoutGrid size={17} /></span><b>Cadence</b></div>
         <input ref={fileRef} type="file" accept="application/json" onChange={importJSON} style={{ display: "none" }} />
@@ -1163,7 +1231,10 @@ const withFcIds = (arr) => (arr || []).map(p => p._id ? p : { ...p, _id: uid() }
 const NMONTHS = FORECAST_MONTHS.length;
 const padMonths = (m) => { const a = Array.isArray(m) ? m.slice(0, NMONTHS) : []; while (a.length < NMONTHS) a.push(0); return a; };
 const padLabels = (l) => { const a = Array.isArray(l) ? l.slice(0, NMONTHS) : []; for (let i = a.length; i < NMONTHS; i++) a.push(FORECAST_MONTHS[i]); return a; };
-const normProjects = (arr) => withFcIds(arr).map(p => ({ ...p, months: padMonths(p.months) }));
+// Drop exact-duplicate rows (same number + name + monthly figures) — redundant rows that inflate the project count.
+const projSig = (p) => [p.number || "", p.name || "", (p.months || []).join(",")].join("|");
+const dedupeExact = (arr) => { const seen = new Set(); const out = []; for (const p of arr) { const s = projSig(p); if (seen.has(s)) continue; seen.add(s); out.push(p); } return out; };
+const normProjects = (arr) => dedupeExact(withFcIds(arr).map(p => ({ ...p, months: padMonths(p.months) })));
 // Parse a Deltek "Project Forecast" .xlsx export into forecast projects, mapping its monthly columns
 // onto the app's month labels by name. Returns [] if it doesn't look like that export.
 async function parseForecastFile(file, monthLabels) {
@@ -1222,7 +1293,7 @@ function useForecast() {
             ver.current = d.v; setProjects(projs); setMonths(labs);
             if (loaded.current) setRev(n => n + 1); loaded.current = true;
             // Migrate the stored doc if anything needs upgrading (missing ids, or old 6-month shape -> 12).
-            const needsMigrate = d.projects.some(p => !p._id || (p.months || []).length !== NMONTHS) || !(d.months && d.months.length === NMONTHS);
+            const needsMigrate = projs.length !== d.projects.length || d.projects.some(p => !p._id || (p.months || []).length !== NMONTHS) || !(d.months && d.months.length === NMONTHS);
             if (needsMigrate) { saving.current = true; const res = await forecastSave({ projects: projs, months: labs }, d.v); if (res && res.ok) ver.current = res.v; saving.current = false; }
           }
         } else {
@@ -3491,8 +3562,39 @@ function TrackerView({ ctx }) {
   });
   const [showColSettings, setShowColSettings] = useState(false);
   const [hiddenCols, setHiddenCols] = useState(() => { try { const v = localStorage.getItem("cadence:tracker:hidden"); return v ? JSON.parse(v) : []; } catch { return []; } });
-  const toggleCol = (key) => setHiddenCols(prev => { const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]; localStorage.setItem("cadence:tracker:hidden", JSON.stringify(next)); return next; });
+  const toggleCol = (key) => setHiddenCols(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
   const visibleCols = cols.filter(c => !hiddenCols.includes(c.key));
+  // Saved views — remember each sheet's filters/sort/hidden columns and restore them on sheet switch.
+  const VIEWS_KEY = "cadence:tracker:views";
+  const applyingView = useRef(false);
+  useEffect(() => {
+    let saved = null;
+    try { saved = (JSON.parse(localStorage.getItem(VIEWS_KEY) || "{}"))[activeSheet]; } catch (e) {}
+    applyingView.current = true;
+    if (saved) {
+      setQ(saved.q || ""); setStage(saved.stage || "all"); setPerson(saved.person || "all");
+      setSort(saved.sort || null); setHiddenCols(Array.isArray(saved.hiddenCols) ? saved.hiddenCols : []);
+    } else { setQ(""); setStage("all"); setPerson("all"); setSort(null); } // no saved view: reset filters, keep columns
+    const t = setTimeout(() => { applyingView.current = false; }, 0);
+    return () => clearTimeout(t);
+  }, [activeSheet]);
+  useEffect(() => {
+    if (applyingView.current) return;
+    try { const all = JSON.parse(localStorage.getItem(VIEWS_KEY) || "{}"); all[activeSheet] = { q, stage, person, sort, hiddenCols }; localStorage.setItem(VIEWS_KEY, JSON.stringify(all)); } catch (e) {}
+  }, [q, stage, person, sort, hiddenCols, activeSheet]);
+  // Bulk selection + actions.
+  const [selected, setSelected] = useState({});
+  const [bulkCol, setBulkCol] = useState("");
+  const [bulkVal, setBulkVal] = useState("");
+  const selIds = Object.keys(selected).filter(id => selected[id]);
+  const selCount = selIds.length;
+  const toggleSel = (id) => setSelected(s => ({ ...s, [id]: !s[id] }));
+  const clearSel = () => setSelected({});
+  const bulkStage = (val) => { if (!val) return; setData(ds => ds.map(r => selected[r._id] ? { ...r, stage: val } : r)); };
+  const bulkSetField = (key, val) => { if (!key) return; setData(ds => ds.map(r => selected[r._id] ? { ...r, [key]: val } : r)); };
+  const bulkDelete = () => { const del = data.filter(r => selected[r._id]); if (!del.length) return; setUndoStack(st => [...st, ...del.map((row, i) => ({ type: "row", sheetId: activeSheet, item: row, index: data.findIndex(x => x._id === row._id), label: row.projectName || "row" }))].slice(-25)); setData(ds => ds.filter(r => !selected[r._id])); clearSel(); };
+  const allVisibleSelected = viewRows.length > 0 && viewRows.every(r => selected[r._id]);
+  const toggleAll = () => setSelected(s => { const n = { ...s }; if (allVisibleSelected) viewRows.forEach(r => delete n[r._id]); else viewRows.forEach(r => n[r._id] = true); return n; });
   useEffect(() => {
     if (!personDropOpen) return;
     const handler = (e) => { if (personDropRef.current && !personDropRef.current.contains(e.target)) setPersonDropOpen(false); };
@@ -3537,7 +3639,7 @@ function TrackerView({ ctx }) {
     XLSX.utils.book_append_sheet(wb, ws, String(activeLabel || "Tracker").replace(/[^\w ]/g, "").slice(0, 31) || "Tracker");
     XLSX.writeFile(wb, `tracker-${String(activeLabel || "sheet").replace(/[^a-z0-9]+/gi, "-")}-${todayISO()}.xlsx`);
   };
-  const GUT = 46;
+  const GUT = 62;
   const cell = { border: "1px solid var(--line)", padding: "5px 8px", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", background: "var(--panel)" };
   const headc = { ...cell, background: "var(--panel2)", fontWeight: 700, color: "var(--ink)", position: "sticky", top: 0, zIndex: 3 };
   const colBtn = { border: "none", background: "transparent", cursor: "pointer", color: "var(--muted)", fontSize: 14, fontWeight: 700, lineHeight: 1, padding: "0 1px" };
@@ -3711,11 +3813,32 @@ function TrackerView({ ctx }) {
 .trk-role a{color:var(--teal);text-decoration:none;}
 .trk-role a:hover{text-decoration:underline;}
 .trk-table textarea.trk-role-edit{width:100%;box-sizing:border-box;border:none;background:var(--raise);box-shadow:inset 0 0 0 2px var(--teal);font-family:'Outfit';font-size:12.5px;color:var(--ink);padding:4px 8px;outline:none;resize:vertical;line-height:1.55;}`}</style>
+        {selCount > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "8px 12px", marginBottom: 10, background: "var(--panel2)", border: "1px solid var(--teal)", borderRadius: 10 }}>
+            <b style={{ fontSize: 13 }}>{selCount} selected</b>
+            <span style={{ color: "var(--line2)" }}>|</span>
+            <select className="btn btn-sm" defaultValue="" onChange={e => { bulkStage(e.target.value); e.target.value = ""; }} title="Set status for selected rows">
+              <option value="">Set status…</option>
+              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select className="btn btn-sm" value={bulkCol} onChange={e => setBulkCol(e.target.value)} title="Choose a field to set">
+              <option value="">Set field…</option>
+              {cols.filter(c => c.key !== "stage").map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+            </select>
+            <input value={bulkVal} onChange={e => setBulkVal(e.target.value)} placeholder="value…" style={{ width: 140, padding: "6px 8px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 13, outline: "none" }} />
+            <button className="btn btn-sm" disabled={!bulkCol} onClick={() => bulkSetField(bulkCol, bulkVal)} title="Apply the value to selected rows">Apply</button>
+            <div style={{ flex: 1 }} />
+            <button className="btn btn-sm" onClick={() => { if (window.confirm(`Delete ${selCount} selected row${selCount === 1 ? "" : "s"}? You can undo from “Undo delete.”`)) bulkDelete(); }} style={{ gap: 5, color: "#c0392b" }}><Trash2 size={14} />Delete</button>
+            <button className="btn btn-sm" onClick={clearSel}>Clear</button>
+          </div>
+        )}
         <div onFocusCapture={() => { editingRef.current = true; }} onBlurCapture={() => { setTimeout(() => { editingRef.current = false; }, 400); }} style={{ overflow: "auto", maxHeight: "84vh", border: "1px solid var(--line)", borderRadius: 8 }}>
           <table className="trk-table" style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%", background: "var(--panel)" }}>
             <thead>
               <tr>
-                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}></th>
+                <th style={{ ...headc, width: GUT, minWidth: GUT, left: 0, zIndex: 6, background: "var(--raise)" }}>
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} title="Select all shown rows" style={{ width: 14, height: 14, accentColor: "var(--primary)", cursor: "pointer" }} />
+                </th>
                 {visibleCols.map((c, ci) => (
                   <th key={c.key} style={{ ...headc, width: c.w, minWidth: c.w }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 3, paddingRight: 6 }}>
@@ -3744,8 +3867,13 @@ function TrackerView({ ctx }) {
                   onDrop={e => { e.preventDefault(); dropOnRow(r._id); }}
                   style={{ opacity: dragId === r._id ? 0.4 : 1, boxShadow: overId === r._id && dragId && dragId !== r._id ? "inset 0 2px 0 #2563c9" : "none" }}>
                   <td className={sort ? "" : "trk-gut"} draggable={!sort} onDragStart={() => { if (!sort) setDragId(r._id); }} onDragEnd={() => { setDragId(null); setOverId(null); }}
-                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title={sort ? "Clear the sort to drag-reorder rows" : "Click to highlight this row · drag to reorder"}
-                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>{ri + 1}</td>
+                    onClick={() => setSelRow(id => id === r._id ? null : r._id)} title={sort ? "Clear the sort to drag-reorder rows" : "Click to highlight this row · drag to reorder · checkbox to select"}
+                    style={{ ...cell, width: GUT, minWidth: GUT, position: "sticky", left: 0, zIndex: 1, background: gutTint, color: "var(--muted)", textAlign: "center", fontSize: 11.5, fontWeight: 600, userSelect: "none" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <input type="checkbox" checked={!!selected[r._id]} onClick={e => e.stopPropagation()} onChange={e => { e.stopPropagation(); toggleSel(r._id); }} style={{ width: 13, height: 13, accentColor: "var(--primary)", cursor: "pointer" }} />
+                      {ri + 1}
+                    </span>
+                  </td>
                   {visibleCols.map(c => {
                     const isRole = ROLE_KEYS.includes(c.key);
                     const isML = MULTILINE.includes(c.key);
