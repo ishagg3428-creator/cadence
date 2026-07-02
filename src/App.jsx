@@ -4202,35 +4202,32 @@ function WorkloadView({ ctx }) {
   // Sort alphabetically, with full "First Last" names ahead of single-word entries / initials.
   const isFull = (n) => /\s/.test(String(n).trim());
   const rows = Object.values(map).sort((a, b) => { const fa = isFull(a.name), fb = isFull(b.name); if (fa !== fb) return fa ? -1 : 1; return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
-  const maxT = rows.reduce((m, r) => Math.max(m, r.total), 0) || 1;
-  const loadColor = (n) => n >= 15 ? "#E03A3E" : n >= 8 ? "#E8A53C" : "var(--teal)";
+  const cbg = (n) => n >= 5 ? "rgba(224,58,62,0.20)" : n >= 3 ? "rgba(232,165,60,0.18)" : n >= 1 ? "rgba(79,168,232,0.10)" : "transparent";
+  const wtxt = (n) => n >= 5 ? "#E03A3E" : n >= 3 ? "#E8A53C" : "var(--ink)";
   const th = { padding: "8px 6px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textAlign: "center", position: "sticky", top: 0, background: "var(--panel2)", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" };
   const td = { padding: "6px", textAlign: "center", borderBottom: "1px solid var(--line)", fontSize: 12.5, fontWeight: 700 };
   return (
     <>
       <div className="head">
-        <div><div className="h-title">Workload</div><div className="h-sub">Open deadlines per engineer — pulled automatically from the tracker's role columns (excludes items checked off in To-do).</div></div>
+        <div><div className="h-title">Workload</div><div className="h-sub">Open deadlines per engineer, by week — pulled automatically from the tracker's role columns (excludes items checked off in To-do). Amber 3–4 / red 5+ in a week.</div></div>
       </div>
       <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ overflow: "auto", maxHeight: "80vh" }}>
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table style={{ borderCollapse: "collapse", width: "max-content", minWidth: "100%" }}>
             <thead>
               <tr>
-                <th style={{ ...th, textAlign: "left", minWidth: 170 }}>Engineer</th>
-                <th style={{ ...th, textAlign: "left", width: "100%", color: "var(--teal)" }}>Open deadlines</th>
+                <th style={{ ...th, textAlign: "left", left: 0, zIndex: 3, background: "var(--panel2)", minWidth: 170 }}>Engineer</th>
+                {weekLabels.map((w, i) => <th key={i} style={th}>{i === 0 ? "This wk" : w}</th>)}
+                <th style={th}>Later</th>
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && <tr><td colSpan={2} style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No open deadlines assigned. Add engineers to role columns and due dates in the tracker.</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={NWK + 2} style={{ padding: 24, textAlign: "center", color: "var(--muted)", fontSize: 13 }}>No open deadlines assigned. Add engineers to role columns and due dates in the tracker.</td></tr>}
               {rows.map(r => (
                 <tr key={r.name}>
-                  <td style={{ padding: "7px 12px", borderBottom: "1px solid var(--line)", fontWeight: 600, fontSize: 13, whiteSpace: "nowrap" }}>{r.name}</td>
-                  <td style={{ padding: "7px 12px", borderBottom: "1px solid var(--line)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <span style={{ minWidth: 22, textAlign: "right", fontWeight: 800, fontSize: 14, color: loadColor(r.total) }}>{r.total}</span>
-                      <span style={{ flex: 1, maxWidth: 320, height: 8, background: "var(--raise)", borderRadius: 99, overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: Math.round(r.total / maxT * 100) + "%", background: loadColor(r.total) }} /></span>
-                    </div>
-                  </td>
+                  <td style={{ padding: "6px 10px", borderBottom: "1px solid var(--line)", fontWeight: 600, fontSize: 13, position: "sticky", left: 0, background: "var(--panel)", whiteSpace: "nowrap" }}>{r.name}</td>
+                  {r.weeks.map((n, i) => <td key={i} style={{ ...td, background: cbg(n), color: n ? wtxt(n) : "var(--dim)" }}>{n || ""}</td>)}
+                  <td style={{ ...td, color: r.later ? "var(--ink)" : "var(--dim)" }}>{r.later || ""}</td>
                 </tr>
               ))}
             </tbody>
