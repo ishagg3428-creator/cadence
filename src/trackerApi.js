@@ -62,6 +62,21 @@ export async function calSave(doc, baseV) {
   return r.json();
 }
 
+// Custom name directory (document id=5) — extra names shown in the role-cell autocomplete, team-shared.
+export async function namesLoad() {
+  const r = await fetch("/api/tracker?id=5", { cache: "no-store", headers: authHeaders() });
+  if (!r.ok) throw new Error("names load failed");
+  return r.json();
+}
+export async function namesSave(doc, baseV) {
+  const headers = authHeaders({ "Content-Type": "application/json" });
+  if (baseV != null) headers["x-base-v"] = String(baseV);
+  const r = await fetch("/api/tracker?id=5", { method: "POST", headers, body: JSON.stringify(doc) });
+  if (r.status === 409) { const j = await r.json(); return { conflict: true, doc: j.doc, v: j.v }; }
+  if (!r.ok) throw new Error("names save failed");
+  return r.json();
+}
+
 // Version snapshots of the tracker (document id=4) — periodic backups for one-click rollback.
 // Read only when the History panel is opened (not on every load), so it costs almost no data transfer.
 export async function snapsLoad() {

@@ -11,7 +11,7 @@ import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
 import * as XLSX from "xlsx";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, snapsLoad, snapsSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, snapsLoad, snapsSave, namesLoad, namesSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -783,6 +783,7 @@ function HomeDashboard({ ctx }) {
         ))}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14, alignItems: "start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="panel">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
             <div className="h-title" style={{ fontSize: 16 }}>Upcoming</div>
@@ -811,6 +812,16 @@ function HomeDashboard({ ctx }) {
             </div>
           ))}
         </div>
+          <div className="panel">
+            <div className="h-title" style={{ fontSize: 16, marginBottom: 8 }}>Jump to</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <button className="btn" onClick={() => ctx.setView("calendar")} style={{ justifyContent: "flex-start" }}><CalendarDays size={15} />Calendar</button>
+              <button className="btn" onClick={() => ctx.setView("tracker")} style={{ justifyContent: "flex-start" }}><Table size={15} />Tracker</button>
+              <button className="btn" onClick={() => ctx.setView("gantt")} style={{ justifyContent: "flex-start" }}><GanttChartSquare size={15} />Forecast Gantt</button>
+              <button className="btn" onClick={() => ctx.setView("projections")} style={{ justifyContent: "flex-start" }}><TrendingUp size={15} />Projections</button>
+            </div>
+          </div>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="panel">
             <div className="h-title" style={{ fontSize: 16, marginBottom: 10 }}>Recently overdue</div>
@@ -822,15 +833,6 @@ function HomeDashboard({ ctx }) {
                 <span className="row-meta"><span className="chip chip-due over">{dateLong(i.date)}</span></span>
               </div>
             ))}
-          </div>
-          <div className="panel">
-            <div className="h-title" style={{ fontSize: 16, marginBottom: 8 }}>Jump to</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <button className="btn" onClick={() => ctx.setView("calendar")} style={{ justifyContent: "flex-start" }}><CalendarDays size={15} />Calendar</button>
-              <button className="btn" onClick={() => ctx.setView("tracker")} style={{ justifyContent: "flex-start" }}><Table size={15} />Tracker</button>
-              <button className="btn" onClick={() => ctx.setView("gantt")} style={{ justifyContent: "flex-start" }}><GanttChartSquare size={15} />Forecast Gantt</button>
-              <button className="btn" onClick={() => ctx.setView("projections")} style={{ justifyContent: "flex-start" }}><TrendingUp size={15} />Projections</button>
-            </div>
           </div>
         </div>
       </div>
@@ -3185,7 +3187,8 @@ const rowEmails = (r) => {
 };
 const ALL_NAMES = Object.keys(EMAIL_DIR).map(k => k.replace(/\b\w/g, c => c.toUpperCase()));
 
-function RoleCell({ value, onSave, effLight, theme }) {
+function RoleCell({ value, onSave, effLight, theme, nameList }) {
+  const NAME_LIST = nameList && nameList.length ? nameList : ALL_NAMES;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -3214,7 +3217,7 @@ function RoleCell({ value, onSave, effLight, theme }) {
     const word = getLastWord(text);
     if (word.length >= 1) {
       const wl = word.toLowerCase();
-      const matches = ALL_NAMES.filter(n => n.toLowerCase().includes(wl)).slice(0, 8);
+      const matches = NAME_LIST.filter(n => n.toLowerCase().includes(wl)).slice(0, 8);
       if (taRef.current) {
         const r = taRef.current.getBoundingClientRect();
         setDropPos({ top: r.bottom, left: r.left });
@@ -3595,6 +3598,23 @@ function TrackerView({ ctx }) {
   const bulkDelete = () => { const del = data.filter(r => selected[r._id]); if (!del.length) return; setUndoStack(st => [...st, ...del.map((row, i) => ({ type: "row", sheetId: activeSheet, item: row, index: data.findIndex(x => x._id === row._id), label: row.projectName || "row" }))].slice(-25)); setData(ds => ds.filter(r => !selected[r._id])); clearSel(); };
   const allVisibleSelected = viewRows.length > 0 && viewRows.every(r => selected[r._id]);
   const toggleAll = () => setSelected(s => { const n = { ...s }; if (allVisibleSelected) viewRows.forEach(r => delete n[r._id]); else viewRows.forEach(r => n[r._id] = true); return n; });
+  // Shared, editable name directory for the role-cell autocomplete (built-in EMAIL_DIR names + custom ones, doc id=5).
+  const [customNames, setCustomNames] = useState([]);
+  const [namesOpen, setNamesOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const namesV = useRef(0);
+  useEffect(() => { (async () => { try { const d = await namesLoad(); if (d && Array.isArray(d.names)) { setCustomNames(d.names); namesV.current = d.v || 0; } } catch (e) {} })(); }, []);
+  const allNames = useMemo(() => Array.from(new Set([...ALL_NAMES, ...customNames.map(s => String(s).trim()).filter(Boolean)])).sort((a, b) => a.localeCompare(b)), [customNames]);
+  const saveNames = async (next) => {
+    setCustomNames(next);
+    try {
+      const res = await namesSave({ names: next }, namesV.current);
+      if (res && res.conflict) { const server = (res.doc && res.doc.names) || []; const merged = Array.from(new Set([...server, ...next])); setCustomNames(merged); const r2 = await namesSave({ names: merged }, res.v); if (r2 && r2.v) namesV.current = r2.v; }
+      else if (res && res.v) namesV.current = res.v;
+    } catch (e) {}
+  };
+  const addCustomName = (nm) => { const v = String(nm || "").trim(); if (!v || allNames.some(n => n.toLowerCase() === v.toLowerCase())) return; saveNames([...customNames, v]); setNewName(""); };
+  const removeCustomName = (nm) => saveNames(customNames.filter(n => n !== nm));
   useEffect(() => {
     if (!personDropOpen) return;
     const handler = (e) => { if (personDropRef.current && !personDropRef.current.contains(e.target)) setPersonDropOpen(false); };
@@ -3746,6 +3766,7 @@ function TrackerView({ ctx }) {
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          <button className="btn btn-sm" onClick={() => setNamesOpen(true)} title="Manage the names that appear when you type into a role cell" style={{ gap: 6 }}><Users size={14} />Names</button>
           <button className="btn btn-sm" onClick={exportXlsx} title="Download this sheet as Excel (current columns, filters & sort)" style={{ gap: 6 }}><Download size={14} />Export</button>
           <button className="btn btn-sm" onClick={openHistory} title="View & restore version snapshots" style={{ gap: 6 }}><Clock size={14} />History</button>
           {undoStack.length > 0 && (
@@ -3882,7 +3903,7 @@ function TrackerView({ ctx }) {
                     <td key={c.key} style={{ ...cell, position: "relative", width: c.w, minWidth: c.w, maxWidth: c.w, padding: 0, verticalAlign: (isRole || isML) ? "top" : "middle", whiteSpace: (isRole || isML) ? "normal" : "nowrap", fontWeight: c.key === "projectName" ? 600 : 400, ...(tint ? { background: tint } : {}) }}>
                       {badDates.length > 0 && <span title={"This won't show on the calendar — invalid date: " + badDates.join(", ") + ". Use M/D or M/D/YY (month 1–12, day 1–31)."} style={{ position: "absolute", top: 2, right: 2, zIndex: 2, fontSize: 11, lineHeight: 1, color: "#E8A53C", cursor: "help" }}>⚠</span>}
                       {isRole ? (
-                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} />
+                        <RoleCell value={r[c.key]} onSave={v => update(r._id, c.key, v)} effLight={effLight} theme={theme} nameList={allNames} />
                       ) : c.key === "stage" ? (
                         <select className="trk-status" value={r.stage || ""} onChange={e => setStatus(r._id, e.target.value)}
                           style={{ color: r.stage ? statusColor(r.stage) : "#9aa6b6", background: r.stage ? statusColor(r.stage) + "1f" : "transparent" }}>
@@ -3925,6 +3946,36 @@ function TrackerView({ ctx }) {
         </div>
         <div className="foot-note" style={{ marginTop: 10, justifyContent: "flex-start" }}><Mail size={12} /> Names link to email (click to send); double-click a role cell to edit (one name per line) · drag the row number to reorder · "Row" adds to the top · Stage is a status dropdown · click a column header to sort.</div>
       </div>
+
+      {namesOpen && (
+        <div className="ov" onClick={() => setNamesOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-h"><h2>Name directory</h2><button className="btn btn-ghost icon-btn" onClick={() => setNamesOpen(false)}><X size={18} /></button></div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>These names appear as suggestions when you type into a role cell (PM, ML, PE, …). Emails are derived as <b>first.last@rtmec.com</b>. Custom names are shared with the team.</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomName(newName); }} placeholder="Add a name, e.g. Jane Smith" style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line2)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 14, outline: "none" }} />
+              <button className="btn btn-pri" onClick={() => addCustomName(newName)} style={{ gap: 5 }}><Plus size={15} />Add</button>
+            </div>
+            {customNames.length > 0 && (
+              <>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", margin: "2px 0 6px" }}>Custom ({customNames.length})</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
+                  {customNames.map(n => (
+                    <div key={n} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--panel)" }}>
+                      <span style={{ flex: 1, fontSize: 13.5, color: "var(--ink)" }}>{n} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {trackerEmailFor(n)}</span></span>
+                      <button className="btn btn-ghost icon-btn" title="Remove" onClick={() => removeCustomName(n)} style={{ color: "#c0392b" }}><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", margin: "2px 0 6px" }}>Built-in ({ALL_NAMES.length})</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 200, overflowY: "auto" }}>
+              {ALL_NAMES.map(n => <span key={n} style={{ fontSize: 12.5, color: "var(--muted)", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 99, padding: "3px 9px" }}>{n}</span>)}
+            </div>
+          </div>
+        </div>
+      )}
 
       {histOpen && (
         <div className="ov" onClick={() => setHistOpen(false)}>
