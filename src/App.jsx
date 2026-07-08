@@ -3545,7 +3545,7 @@ function TrackerView({ ctx }) {
     ctx.clearTrackerGoto();
     return () => clearTimeout(t);
   }, [ctx.trackerGoto]);
-  const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
+  const ROLE_KEYS = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee", "assignee"];
   const MULTILINE = ["dueDates", "bidPermitDate", "statusNotes", "bidPermitNote"]; // cells that render as multi-line text (e.g. one date per line)
   // Brand sheets (Costco / ALDI / Culver's) have their own role columns (cv_/co_/al_). On these,
   // a new row autofills the standing team from an editable "Default team" panel at the top.
@@ -3663,8 +3663,11 @@ function TrackerView({ ctx }) {
   const [namesOpen, setNamesOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const namesV = useRef(0);
-  useEffect(() => { (async () => { try { const d = await namesLoad(); if (d && Array.isArray(d.names)) { setCustomNames(d.names); namesV.current = d.v || 0; } } catch (e) {} })(); }, []);
-  const allNames = useMemo(() => Array.from(new Set([...ALL_NAMES, ...customNames.map(s => String(s).trim()).filter(Boolean)])).sort((a, b) => a.localeCompare(b)), [customNames]);
+  // The team-members list is the single source for the name dropdown. Seed it once from the built-in
+  // roster (all full first-last names) so it starts populated; after that it's whatever the team sets.
+  useEffect(() => { (async () => { try { const d = await namesLoad(); if (d && Array.isArray(d.names)) { setCustomNames(d.names); namesV.current = d.v || 0; } else { const seed = ALL_NAMES.slice(); setCustomNames(seed); const res = await namesSave({ names: seed }, 0); if (res && res.v) namesV.current = res.v; } } catch (e) {} })(); }, []);
+  const nameFirst = (a, b) => { const fa = /\s/.test(a), fb = /\s/.test(b); if (fa !== fb) return fa ? -1 : 1; return a.toLowerCase().localeCompare(b.toLowerCase()); };
+  const allNames = useMemo(() => Array.from(new Set(customNames.map(s => String(s).trim()).filter(Boolean))).sort(nameFirst), [customNames]);
   const saveNames = async (next) => {
     setCustomNames(next);
     try {
@@ -3683,6 +3686,9 @@ function TrackerView({ ctx }) {
   }, [personDropOpen]);
 
   const addCol = () => { const label = window.prompt("New column name:"); if (!label || !label.trim()) return; setCols(cs => [...cs, { key: "c_" + uid(), label: label.trim(), w: 150 }]); };
+  const hasAssignee = cols.some(c => c.key === "assignee");
+  // Add the recognized "Assigned To" column (drives who a project's deadlines count for in Workload).
+  const addAssigneeCol = () => setCols(cs => { if (cs.some(c => c.key === "assignee")) return cs; const col = { key: "assignee", label: "Assigned To", w: 150 }; const i = cs.findIndex(c => c.key === "stage"); const n = [...cs]; if (i >= 0) n.splice(i, 0, col); else n.push(col); return n; });
   const delCol = (key) => {
     const c = cols.find(x => x.key === key);
     const nm = c ? (c.label || "this column") : "this column";
@@ -3863,9 +3869,10 @@ function TrackerView({ ctx }) {
           <div style={{ flex: 1 }} />
           <button className="btn btn-sm" onClick={addRow}><Plus size={14} />Row</button>
           <button className="btn btn-sm" onClick={addCol}><Plus size={14} />Column</button>
+          {!hasAssignee && <button className="btn btn-sm" onClick={addAssigneeCol} title="Add an 'Assigned To' column that assigns each project's deadlines to a specific engineer in Workload"><Plus size={14} />Assigned-To</button>}
           <button className="btn btn-sm" onClick={() => setMineOnly(m => !m)} title="Show only projects with your name on the team" style={mineOnly ? { gap: 6, borderColor: "var(--teal)", color: "var(--teal)" } : { gap: 6 }}><Users size={14} />My projects</button>
           <button className="btn btn-sm" onClick={toggleDense} title="Toggle row density" style={{ gap: 6 }}>{dense ? <Minus size={14} /> : <Table size={14} />}{dense ? "Comfortable" : "Compact"}</button>
-          <button className="btn btn-sm" onClick={() => setNamesOpen(true)} title="Manage the names that appear when you type into a role cell" style={{ gap: 6 }}><Users size={14} />Names</button>
+          <button className="btn btn-sm" onClick={() => setNamesOpen(true)} title="Manage the active team members offered in role-cell dropdowns" style={{ gap: 6 }}><Users size={14} />Team</button>
           <button className="btn btn-sm" onClick={exportXlsx} title="Download this sheet as Excel (current columns, filters & sort)" style={{ gap: 6 }}><Download size={14} />Export</button>
           <button className="btn btn-sm" onClick={openHistory} title="View & restore version snapshots" style={{ gap: 6 }}><Clock size={14} />History</button>
           {undoStack.length > 0 && (
@@ -4038,28 +4045,21 @@ function TrackerView({ ctx }) {
       {namesOpen && (
         <div className="ov" onClick={() => setNamesOpen(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-h"><h2>Name directory</h2><button className="btn btn-ghost icon-btn" onClick={() => setNamesOpen(false)}><X size={18} /></button></div>
-            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>These names appear as suggestions when you type into a role cell (PM, ML, PE, …). Emails are derived as <b>first.last@rtmec.com</b>. Custom names are shared with the team.</div>
+            <div className="modal-h"><h2>Team members</h2><button className="btn btn-ghost icon-btn" onClick={() => setNamesOpen(false)}><X size={18} /></button></div>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>This is the active team list — the <b>only</b> names offered in the role-cell dropdowns and used for autofill. Use <b>full first + last names</b> so emails resolve to <b>first.last@rtmec.com</b>. Shared with everyone.</div>
             <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
-              <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomName(newName); }} placeholder="Add a name, e.g. Jane Smith" style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line2)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 14, outline: "none" }} />
+              <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addCustomName(newName); }} placeholder="Add a team member, e.g. Jane Smith" style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 8, border: "1px solid var(--line2)", background: "var(--bg)", color: "var(--ink)", fontFamily: "Outfit", fontSize: 14, outline: "none" }} />
               <button className="btn btn-pri" onClick={() => addCustomName(newName)} style={{ gap: 5 }}><Plus size={15} />Add</button>
             </div>
-            {customNames.length > 0 && (
-              <>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", margin: "2px 0 6px" }}>Custom ({customNames.length})</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 12 }}>
-                  {customNames.map(n => (
-                    <div key={n} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--panel)" }}>
-                      <span style={{ flex: 1, fontSize: 13.5, color: "var(--ink)" }}>{n} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {trackerEmailFor(n)}</span></span>
-                      <button className="btn btn-ghost icon-btn" title="Remove" onClick={() => removeCustomName(n)} style={{ color: "#c0392b" }}><Trash2 size={14} /></button>
-                    </div>
-                  ))}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", margin: "2px 0 6px" }}>{allNames.length} member{allNames.length === 1 ? "" : "s"}</div>
+            {allNames.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", padding: "8px 0" }}>No team members yet — add names above.</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 360, overflowY: "auto" }}>
+              {allNames.map(n => (
+                <div key={n} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--line)", borderRadius: 8, background: "var(--panel)" }}>
+                  <span style={{ flex: 1, fontSize: 13.5, color: /\s/.test(n) ? "var(--ink)" : "#E8A53C" }} title={/\s/.test(n) ? "" : "Not a full first + last name — email may not resolve"}>{n} <span style={{ fontSize: 11, color: "var(--dim)" }}>· {trackerEmailFor(n)}</span></span>
+                  <button className="btn btn-ghost icon-btn" title="Remove" onClick={() => removeCustomName(n)} style={{ color: "#c0392b" }}><Trash2 size={14} /></button>
                 </div>
-              </>
-            )}
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", margin: "2px 0 6px" }}>Built-in ({ALL_NAMES.length})</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, maxHeight: 200, overflowY: "auto" }}>
-              {ALL_NAMES.map(n => <span key={n} style={{ fontSize: 12.5, color: "var(--muted)", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 99, padding: "3px 9px" }}>{n}</span>)}
+              ))}
             </div>
           </div>
         </div>
@@ -4185,7 +4185,9 @@ function WorkloadView({ ctx }) {
     return () => { on = false; };
   }, []);
   const RK = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
-  const namesOf = (r) => { const set = new Set(); RK.forEach(k => String(r[k] || "").split(/\n|\/| and /).forEach(x => { const s = x.trim(); if (s && !TRACKER_BLOCK.has(s.toUpperCase())) set.add(s); })); return [...set]; };
+  const split = (v) => String(v || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase()));
+  // If the row has an explicit "Assigned To", the deadline counts only for them; otherwise fall back to everyone in the role columns.
+  const namesOf = (r) => { const a = split(r.assignee); if (a.length) return [...new Set(a)]; const set = new Set(); RK.forEach(k => split(r[k]).forEach(s => set.add(s))); return [...set]; };
   const today = todayISO();
   const wkStartOf = (iso) => { const d = new Date(iso + "T00:00:00"); return addDaysIso(d, -d.getDay()); };
   const curWk = wkStartOf(today);
