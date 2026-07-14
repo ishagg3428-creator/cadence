@@ -4203,7 +4203,9 @@ function WorkloadView({ ctx }) {
   }));
   // Sort alphabetically, with full "First Last" names ahead of single-word entries / initials.
   const isFull = (n) => /\s/.test(String(n).trim());
-  const rows = Object.values(map).sort((a, b) => { const fa = isFull(a.name), fb = isFull(b.name); if (fa !== fb) return fa ? -1 : 1; return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
+  const rows = Object.values(map)
+    .filter(r => r.weeks.some(n => n > 0) || r.later > 0) // drop anyone with no deadlines in the shown weeks
+    .sort((a, b) => { const fa = isFull(a.name), fb = isFull(b.name); if (fa !== fb) return fa ? -1 : 1; return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); });
   const cbg = (n) => n >= 5 ? "rgba(224,58,62,0.20)" : n >= 3 ? "rgba(232,165,60,0.18)" : n >= 1 ? "rgba(79,168,232,0.10)" : "transparent";
   const wtxt = (n) => n >= 5 ? "#E03A3E" : n >= 3 ? "#E8A53C" : "var(--ink)";
   const th = { padding: "8px 6px", fontSize: 11, fontWeight: 700, color: "var(--muted)", textAlign: "center", position: "sticky", top: 0, background: "var(--panel2)", borderBottom: "1px solid var(--line)", whiteSpace: "nowrap" };
