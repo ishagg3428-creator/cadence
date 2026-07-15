@@ -3401,6 +3401,8 @@ function TrackerView({ ctx }) {
   const [remoteRev, setRemoteRev] = useState(0); // bumps only when data arrives from the DB, to refresh cell inputs without remounting on every local edit
   const [histOpen, setHistOpen] = useState(false); // version-history panel
   const [snaps, setSnaps] = useState(null);         // loaded on demand (null = loading)
+  const [localBk, setLocalBk] = useState([]);       // on-device backups (localStorage) — survive a crash even if the DB is down
+  const localBkTs = useRef(0);
   const [sort, setSort] = useState(null);           // { key, dir:1|-1 } — display-only sort
   const [mineOnly, setMineOnly] = useState(false);  // show only rows with the current user on the team
   const [dense, setDense] = useState(() => { try { return localStorage.getItem("cadence:tracker:dense") === "1"; } catch (e) { return false; } });
@@ -3434,7 +3436,7 @@ function TrackerView({ ctx }) {
     try { localStorage.setItem(SNAP_KEY, String(Date.now())); } catch (e) {} // set first so a failure doesn't cause retries
     try { await writeSnapshot(doc); } catch (e) {}
   };
-  const openHistory = async () => { setHistOpen(true); setSnaps(null); try { const d = await snapsLoad(); setSnaps((d && d.snaps) || []); } catch (e) { setSnaps([]); } };
+  const openHistory = async () => { setHistOpen(true); setSnaps(null); setLocalBk(readLocalBk().slice().reverse()); try { const d = await snapsLoad(); setSnaps((d && d.snaps) || []); } catch (e) { setSnaps([]); } };
   const snapshotNow = async () => { try { const next = await writeSnapshot(buildDoc()); if (next) { setSnaps(next); ctx.toast && ctx.toast("Snapshot saved"); } } catch (e) {} };
   const restoreSnap = async (snap) => {
     if (!snap || !snap.doc || !snap.doc.sheets) return;
@@ -3442,6 +3444,28 @@ function TrackerView({ ctx }) {
     try { await writeSnapshot(buildDoc()); } catch (e) {}
     setSheets(withIds(snap.doc.sheets)); setRemoteRev(n => n + 1); setHistOpen(false);
     ctx.toast && ctx.toast("Snapshot restored");
+  };
+  // On-device backups (localStorage) — a crash-proof safety net that works even when the DB is unreachable.
+  const LOCAL_BK_KEY = "cadence:tracker:localbackups";
+  const readLocalBk = () => { try { return JSON.parse(localStorage.getItem(LOCAL_BK_KEY) || "[]"); } catch (e) { return []; } };
+  const saveLocalBackup = (shs) => {
+    const now = Date.now();
+    if (now - localBkTs.current < 4 * 60 * 1000) return; // at most ~one every 4 minutes to limit churn
+    localBkTs.current = now;
+    try {
+      let list = readLocalBk();
+      list.push({ id: "lbk_" + now, ts: now, sheets: shs });
+      list = list.slice(-8); // keep the 8 most recent
+      try { localStorage.setItem(LOCAL_BK_KEY, JSON.stringify(list)); }
+      catch (quota) { while (list.length > 2) { list = list.slice(1); try { localStorage.setItem(LOCAL_BK_KEY, JSON.stringify(list)); break; } catch (e2) {} } } // shed oldest if storage is full
+    } catch (e) {}
+  };
+  const restoreLocal = (bk) => {
+    if (!bk || !bk.sheets) return;
+    if (!window.confirm("Restore this on-device backup from " + new Date(bk.ts).toLocaleString() + "? It replaces the current tracker.")) return;
+    try { saveLocalBackup(buildDoc().sheets); } catch (e) {}
+    setSheets(withIds(bk.sheets)); setRemoteRev(n => n + 1); setHistOpen(false);
+    ctx.toast && ctx.toast("Restored on-device backup");
   };
   // Load all sheets from the shared DB on open, then poll for others' changes. Adaptive backoff +
   // a single-request poll (?since) keeps Neon queries low and lets its compute sleep when idle.
@@ -3488,6 +3512,7 @@ function TrackerView({ ctx }) {
   useEffect(() => {
     try { localStorage.setItem(SHEETS_KEY, JSON.stringify(sheets)); } catch (e) {}
     if (!hydrated.current) return; // never push to the shared DB before we've loaded its copy (stops a stale local cache from overwriting it)
+    saveLocalBackup(sheets); // rolling on-device backup (throttled) — recoverable after a crash / DB outage
     if (!apiOk.current) { setSyncState("offline"); return; }
     // Only save if our doc actually differs from the last copy we synced. This (not a flag) is how we
     // skip re-saving a change we just pulled in — and it can't get "stuck" the way a flag can.
@@ -4069,14 +4094,15 @@ function TrackerView({ ctx }) {
         <div className="ov" onClick={() => setHistOpen(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-h"><h2>Version history</h2><button className="btn btn-ghost icon-btn" onClick={() => setHistOpen(false)}><X size={18} /></button></div>
-            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Automatic backups of the whole tracker (every sheet). One is saved about once a day; the 15 most recent are kept. Restoring replaces the current data — and snapshots it first, so you can always undo by restoring a newer one.</div>
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 10 }}>Restore points for the whole tracker. Restoring replaces the current data (and snapshots it first, so you can undo). <b>Cloud</b> backups are shared and saved ~daily; <b>on-device</b> backups live in this browser and work even if the site or database crashes.</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px" }}>Cloud (all devices)</div>
               <button className="btn btn-sm" onClick={snapshotNow} disabled={!apiOk.current} title={apiOk.current ? "Save a snapshot right now" : "Unavailable while offline"} style={{ gap: 6 }}><Plus size={13} />Snapshot now</button>
             </div>
-            {snaps === null && <div style={{ fontSize: 13, color: "var(--muted)", padding: "10px 0" }}>Loading…</div>}
-            {snaps && snaps.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", padding: "10px 0" }}>No snapshots yet — one saves automatically, or use “Snapshot now”.</div>}
+            {snaps === null && <div style={{ fontSize: 13, color: "var(--muted)", padding: "6px 0" }}>Loading…</div>}
+            {snaps && snaps.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", padding: "6px 0" }}>No cloud snapshots yet — one saves automatically, or use “Snapshot now”.</div>}
             {snaps && snaps.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 360, overflowY: "auto" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
                 {snaps.slice().reverse().map(sn => {
                   const shs = (sn.doc && sn.doc.sheets) || [];
                   const nrows = shs.reduce((a, s) => a + ((s.rows && s.rows.length) || 0), 0);
@@ -4089,6 +4115,27 @@ function TrackerView({ ctx }) {
                         <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{shs.length} sheet{shs.length === 1 ? "" : "s"} · {nrows} rows</div>
                       </div>
                       <button className="btn btn-sm" onClick={() => restoreSnap(sn)} style={{ gap: 5 }}><RotateCcw size={13} />Restore</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".5px", margin: "14px 0 8px" }}>On this device (offline)</div>
+            {localBk.length === 0 && <div style={{ fontSize: 13, color: "var(--muted)", padding: "6px 0" }}>No on-device backups yet — one saves automatically every few minutes as you work.</div>}
+            {localBk.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                {localBk.map(bk => {
+                  const shs = bk.sheets || [];
+                  const nrows = shs.reduce((a, s) => a + ((s.rows && s.rows.length) || 0), 0);
+                  const when = new Date(bk.ts).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+                  return (
+                    <div key={bk.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel)" }}>
+                      <ShieldCheck size={14} style={{ color: "var(--muted)", flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{when}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{shs.length} sheet{shs.length === 1 ? "" : "s"} · {nrows} rows · this browser</div>
+                      </div>
+                      <button className="btn btn-sm" onClick={() => restoreLocal(bk)} style={{ gap: 5 }}><RotateCcw size={13} />Restore</button>
                     </div>
                   );
                 })}
