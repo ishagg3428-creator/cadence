@@ -11,7 +11,7 @@ import { SEED_TRACKER, EMAIL_DIR } from "./trackerData.js";
 import { SEED_SHEETS } from "./sheetsData.js";
 import { FORECAST_MONTHS, FORECAST_RANGE, FORECAST_PROJECTS } from "./forecastData.js";
 import * as XLSX from "xlsx";
-import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiVersion, apiPoll, snapsLoad, snapsSave, namesLoad, namesSave, todoLoad, todoSave } from "./trackerApi.js";
+import { apiLoad, apiSave, calLoad, calSave, apiLogin, apiLogout, hasKey, forecastLoad, forecastSave, apiPoll, snapsLoad, snapsSave, namesLoad, namesSave, todoLoad, todoSave } from "./trackerApi.js";
 import { ganttLoad, ganttSave } from "./ganttApi.js";
 
 /* ================================================================ *
@@ -629,7 +629,6 @@ export default function App() {
     effLight, theme,
     loadSample: () => setData(SAMPLE) };
 
-  const unreadCount = buildNotifs(gantt).filter(n => !notif.read.includes(n.id) && !notif.removed.includes(n.id)).length;
   const presence = user.presence || "auto";
   const online = presence !== "offline";
 
