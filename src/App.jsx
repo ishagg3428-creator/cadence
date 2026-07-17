@@ -4224,11 +4224,15 @@ function WorkloadView({ ctx }) {
   const [done, setDone] = useState({});
   useEffect(() => {
     let on = true;
-    (async () => {
+    const load = async () => {
       try { const d = await apiLoad(); if (on && d && d.sheets) setTsheets(d.sheets); } catch (e) {}
       try { const t = await todoLoad(); if (on && t && t.done) setDone(t.done); } catch (e) {}
-    })();
-    return () => { on = false; };
+    };
+    load();
+    const onFocus = () => { if (!document.hidden) load(); }; // stay live: refresh when the tab regains focus
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { on = false; window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   const RK = ["pm", "ml", "me", "pe", "ee", "fp", "cv_se", "cv_pe", "co_pe", "al_pm", "al_me", "al_pe", "al_ee"];
   const split = (v) => String(v || "").split(/\n|\/| and /).map(s => s.trim()).filter(s => s && !TRACKER_BLOCK.has(s.toUpperCase()));
@@ -4300,12 +4304,16 @@ function TodoView({ ctx }) {
   const [cats, setCats] = useState({ due: true, bid: true, event: true });
   useEffect(() => {
     let on = true;
-    (async () => {
+    const load = async () => {
       try { const d = await apiLoad(); if (on && d && d.sheets) setTsheets(d.sheets); } catch (e) {}
       try { const c = await calLoad(); if (on && c && c.events) setEvents(c.events); } catch (e) {}
       try { const t = await todoLoad(); if (on && t && t.done) { setDone(t.done); doneV.current = t.v || 0; } } catch (e) {}
-    })();
-    return () => { on = false; };
+    };
+    load();
+    const onFocus = () => { if (!document.hidden) load(); }; // stay live: refresh when the tab regains focus
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+    return () => { on = false; window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); };
   }, []);
   // Set a key on/off; merges with the server copy on conflict so teammates' checks aren't lost.
   const setDoneKey = async (key, isOn) => {
@@ -4385,7 +4393,7 @@ function CalendarView({ ctx }) {
   const gComplete = (g) => g.members.length > 0 && g.members.every(m => m.done);
   // Read the shared tracker (read-only — never writes, so it can't affect the Tracker's sync).
   const [tsheets, setTsheets] = useState(() => { try { const v = localStorage.getItem(SHEETS_KEY); return v ? JSON.parse(v) : []; } catch (e) { return []; } });
-  useEffect(() => { let on = true; (async () => { try { const doc = await apiLoad(); if (on && doc && doc.sheets) setTsheets(doc.sheets); } catch (e) {} })(); return () => { on = false; }; }, []);
+  useEffect(() => { let on = true; const load = async () => { try { const doc = await apiLoad(); if (on && doc && doc.sheets) setTsheets(doc.sheets); } catch (e) {} }; load(); const onFocus = () => { if (!document.hidden) load(); }; window.addEventListener("focus", onFocus); document.addEventListener("visibilitychange", onFocus); return () => { on = false; window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); }; }, []);
   const [cur, setCur] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
   const [mode, setMode] = useState("month"); // "month" | "week"
   const [weekAnchor, setWeekAnchor] = useState(() => todayISO());
@@ -4396,7 +4404,7 @@ function CalendarView({ ctx }) {
   const [bkMgr, setBkMgr] = useState(false);     // bucket-manager modal open
   const [events, setEvents] = useState([]);      // shared custom calendar events (DB doc id=2)
   const [todoDone, setTodoDone] = useState({});  // items checked off in the To-do view (doc id=6) — shown struck through here
-  useEffect(() => { let on = true; (async () => { try { const t = await todoLoad(); if (on && t && t.done) setTodoDone(t.done); } catch (e) {} })(); return () => { on = false; }; }, []);
+  useEffect(() => { let on = true; const load = async () => { try { const t = await todoLoad(); if (on && t && t.done) setTodoDone(t.done); } catch (e) {} }; load(); const onFocus = () => { if (!document.hidden) load(); }; window.addEventListener("focus", onFocus); document.addEventListener("visibilitychange", onFocus); return () => { on = false; window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", onFocus); }; }, []);
   const [buckets, setBuckets] = useState(SEED_BUCKETS);
   const [cats, setCats] = useState({ due: true, bid: true }); // tracker-derived date filters
   const [hiddenBk, setHiddenBk] = useState({});  // bucket ids (or "none") that are filtered out
